@@ -42,13 +42,13 @@ export async function applyStatDeltas(profileId, deltas, event) {
   const current = await loadGameState(profileId)
 
   const updated = {
+    age: deltas.age !== undefined ? clamp(current.age + deltas.age) : current.age,
     stress:    deltas.stress    !== undefined ? clamp(current.stress    + deltas.stress)    : current.stress,
-    happiness: deltas.happiness !== undefined ? clamp(current.happiness + deltas.happiness) : current.happiness,
+    expected_death_age: deltas.expected_death_age !== undefined ? current.expected_death_age + deltas.expected_death_age : current.expected_death_age,
     health:    deltas.health    !== undefined ? clamp(current.health    + deltas.health)    : current.health,
     free_time: deltas.free_time !== undefined ? clamp(current.free_time + deltas.free_time) : current.free_time,
     net_worth: deltas.net_worth !== undefined ? current.net_worth + deltas.net_worth        : current.net_worth,
     salary:    deltas.salary    !== undefined ? current.salary    + deltas.salary           : current.salary,
-    career_xp: deltas.career_xp !== undefined ? current.career_xp + deltas.career_xp       : current.career_xp,
   }
 
   await Promise.all([
