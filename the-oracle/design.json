@@ -1,0 +1,58 @@
+{
+  "version": "1.0.0",
+  "name": "hogwarts-onboarding-outline-system",
+  "inspiration": "Hogwarts Legacy save-slot stepped frame",
+  "palette": {
+    "gryffindorScarlet": "#AE0001",
+    "gryffindorDeep": "#740001",
+    "gryffindorGoldBright": "#EEBA30",
+    "gryffindorGold": "#D3A625",
+    "slytherinEmerald": "#033807",
+    "slytherinSilver": "#717679",
+    "hufflepuffYellow": "#E3A000",
+    "hufflepuffBlack": "#3D2F22",
+    "ravenclawBlue": "#00165E",
+    "ravenclawBlueBright": "#5272E8",
+    "ravenclawBronze": "#C39A1C",
+    "mahogany": "#4B2B1F",
+    "charcoal": "#1B1714",
+    "parchment": "#E8DCC4"
+  },
+  "outline": {
+    "slot": {
+      "lineWidthPx": 1,
+      "cornerSegmentPx": 24,
+      "sideSegmentPx": 30,
+      "stubSegmentPx": 12,
+      "step1OffsetPx": 6,
+      "step2OffsetPx": 12,
+      "radiusPx": 2,
+      "linePrimary": "#7B6A46",
+      "lineSecondary": "rgba(123, 106, 70, 0.46)",
+      "lineTertiary": "rgba(110, 114, 118, 0.42)",
+      "surfaceTop": "#0E1014",
+      "surfaceBottom": "#08090C",
+      "mistGlow": "rgba(64, 73, 94, 0.06)"
+    },
+    "frame": {
+      "lineWidthPx": 1,
+      "cornerSegmentPx": 18,
+      "sideSegmentPx": 22,
+      "stubSegmentPx": 10,
+      "stepOffsetPx": 5,
+      "radiusPx": 2,
+      "linePrimary": "rgba(123, 106, 70, 0.5)",
+      "lineSecondary": "rgba(110, 114, 118, 0.44)",
+      "surfaceTop": "#141414",
+      "surfaceBottom": "#0D0D0E"
+    }
+  },
+  "background": {
+    "base": "#040404",
+    "mistBlue": "rgba(82, 114, 232, 0.12)",
+    "mistGold": "rgba(211, 166, 37, 0.08)",
+    "gridLine": "rgba(232, 220, 196, 0.075)",
+    "gridLineBold": "rgba(195, 154, 28, 0.1)",
+    "gridSizePx": 64
+  }
+}
