@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 
 // Internal helper — attaches the Supabase JWT to every API call
 async function authFetch(path, options = {}) {
+  const supabase = getSupabase()
   const { data: { session } } = await supabase.auth.getSession()
   return fetch(path, {
     ...options,

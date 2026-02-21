@@ -8,6 +8,9 @@ import Image from "next/image";
 import {
   ChevronLeft,
   ChevronRight,
+  PanelRight,
+  Volume2,
+  VolumeX,
   Sparkles,
   Upload,
 } from "lucide-react";
@@ -17,6 +20,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { AIInputWithLoading } from "@/components/ui/ai-input-with-loading";
 import { AIVoiceInput } from "@/components/ui/ai-voice-input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { clearEvents } from "@/lib/client/event-store";
 import { clearScenarios } from "@/lib/client/scenario-store";
 import { saveSetup } from "@/lib/client/setup-store";
@@ -219,6 +230,12 @@ type LinkedinIngestResponse = {
 };
 
 type SpeechTarget = "story";
+
+type InterviewVoiceResponse = {
+  error?: string;
+};
+
+const INTERVIEWER_SPRITE_VARIANTS = ["/interviewer/sprite_happy.png"];
 
 function makeId(prefix: string) {
   const uuid = globalThis?.crypto?.randomUUID?.();
@@ -668,9 +685,17 @@ export function OnboardingWizard() {
   const [activeVoiceTarget, setActiveVoiceTarget] = useState<SpeechTarget | null>(
     null,
   );
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [interviewerSpriteIndex, setInterviewerSpriteIndex] = useState(0);
+  const [autoVoiceEnabled, setAutoVoiceEnabled] = useState(true);
+  const [audioPlaying, setAudioPlaying] = useState(false);
   const storyScrollRef = useRef<HTMLDivElement | null>(null);
   const interviewRequestAbortRef = useRef<AbortController | null>(null);
   const interviewRequestIdRef = useRef(0);
+  const interviewSpeechRequestIdRef = useRef(0);
+  const interviewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const interviewAudioObjectUrlRef = useRef<string | null>(null);
+  const lastSpokenAssistantIdRef = useRef<string | null>(null);
 
   const steps = useMemo(() => {
     if (onboardingPath === "minimal") {
@@ -777,6 +802,17 @@ export function OnboardingWizard() {
       })),
     [],
   );
+  const latestAssistantMessage = useMemo(
+    () =>
+      [...interviewMessages]
+        .reverse()
+        .find((message) => message.role === "assistant") ?? null,
+    [interviewMessages],
+  );
+  const currentInterviewerSprite =
+    INTERVIEWER_SPRITE_VARIANTS[
+      interviewerSpriteIndex % Math.max(1, INTERVIEWER_SPRITE_VARIANTS.length)
+    ] ?? INTERVIEWER_SPRITE_VARIANTS[0];
   const layerOneNarrativeQuestions = useMemo(
     () =>
       INTERVIEW_DOMAINS.flatMap((domain) =>
@@ -799,6 +835,83 @@ export function OnboardingWizard() {
     }
     return true;
   }, [hasResumeSignal, onboardingPath, stepId]);
+
+  const stopInterviewerSpeech = useCallback(() => {
+    const audio = interviewAudioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.src = "";
+      interviewAudioRef.current = null;
+    }
+    const objectUrl = interviewAudioObjectUrlRef.current;
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+      interviewAudioObjectUrlRef.current = null;
+    }
+    setAudioPlaying(false);
+  }, []);
+
+  const cycleInterviewerSprite = useCallback(() => {
+    setInterviewerSpriteIndex((previous) => {
+      if (INTERVIEWER_SPRITE_VARIANTS.length <= 1) return previous;
+      return (previous + 1) % INTERVIEWER_SPRITE_VARIANTS.length;
+    });
+  }, []);
+
+  const speakInterviewerText = useCallback(
+    async (text: string) => {
+      if (!autoVoiceEnabled) return;
+      const message = text.trim();
+      if (!message) return;
+
+      const requestId = interviewSpeechRequestIdRef.current + 1;
+      interviewSpeechRequestIdRef.current = requestId;
+      stopInterviewerSpeech();
+
+      try {
+        const response = await fetch("/api/intake/voice", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: message,
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as InterviewVoiceResponse | null;
+          throw new Error(payload?.error ?? "Could not synthesize interviewer voice.");
+        }
+        if (interviewSpeechRequestIdRef.current !== requestId) return;
+
+        const blob = await response.blob();
+        if (interviewSpeechRequestIdRef.current !== requestId) return;
+
+        const objectUrl = URL.createObjectURL(blob);
+        const audio = new Audio(objectUrl);
+        interviewAudioRef.current = audio;
+        interviewAudioObjectUrlRef.current = objectUrl;
+        setAudioPlaying(true);
+
+        audio.onended = () => {
+          if (interviewSpeechRequestIdRef.current !== requestId) return;
+          stopInterviewerSpeech();
+        };
+        audio.onerror = () => {
+          if (interviewSpeechRequestIdRef.current !== requestId) return;
+          setVoiceError("Interviewer voice could not be played. You can continue by text.");
+          stopInterviewerSpeech();
+        };
+        await audio.play();
+      } catch (err: any) {
+        if (interviewSpeechRequestIdRef.current !== requestId) return;
+        setVoiceError(err?.message ?? "Interviewer voice is unavailable right now.");
+        stopInterviewerSpeech();
+      }
+    },
+    [autoVoiceEnabled, stopInterviewerSpeech],
+  );
 
   useEffect(() => {
     setStepIndex((index) => Math.min(index, Math.max(steps.length - 1, 0)));
