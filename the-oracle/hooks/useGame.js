@@ -18,6 +18,8 @@ export function useGame() {
   const [state, setState]     = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(null)
+  const [inference, setInference]   = useState(null)
+  const [aiLoading, setAiLoading]   = useState(false)
 
   // Load game state on mount
   useEffect(() => {
@@ -46,6 +48,46 @@ export function useGame() {
       setError(e.message)
     } finally {
       setLoading(false)
+    }
+  }, [])
+
+  /**
+   * getInference — asks Gemini to analyze the player's life and return decisions
+   * @param {string} question - the current situation e.g. "I'm thinking about changing careers"
+   * @returns {{ inference, decisions, memory_updates }}
+   */
+  const getInference = useCallback(async (question) => {
+    setAiLoading(true)
+    try {
+      const res = await authFetch('/ai/infer', {
+        method: 'POST',
+        body: JSON.stringify({ question, type: 'inference' }),
+      })
+      setInference(res)
+      return res
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setAiLoading(false)
+    }
+  }, [])
+
+  /**
+   * getSummary — asks Gemini for a quick "your life at a glance" summary
+   * @returns {{ summary, focus }}
+   */
+  const getSummary = useCallback(async () => {
+    setAiLoading(true)
+    try {
+      const res = await authFetch('/ai/infer', {
+        method: 'POST',
+        body: JSON.stringify({ question: 'Summarize my life', type: 'summary' }),
+      })
+      return res
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setAiLoading(false)
     }
   }, [])
 
