@@ -13,7 +13,6 @@ PLAYER STATS:
 - Age: ${state.age}
 - Health: ${state.health}/100
 - Stress: ${state.stress}/100
-- Happiness: ${state.happiness}/100
 - Free Time: ${state.free_time}/100
 - Net Worth: $${Number(state.net_worth).toLocaleString()}
 - Monthly Income: $${Number(state.monthly_income).toLocaleString()}
@@ -69,7 +68,6 @@ Based on everything above, respond with a JSON object in this exact format:
       "outcome": "What is likely to happen if they choose this",
       "deltas": {
         "stress": 0,
-        "happiness": 0,
         "health": 0,
         "free_time": 0,
         "net_worth": 0,
@@ -83,7 +81,6 @@ Based on everything above, respond with a JSON object in this exact format:
       "outcome": "What is likely to happen if they choose this",
       "deltas": {
         "stress": 0,
-        "happiness": 0,
         "health": 0,
         "free_time": 0,
         "net_worth": 0,
@@ -97,7 +94,6 @@ Based on everything above, respond with a JSON object in this exact format:
       "outcome": "What is likely to happen if they choose this",
       "deltas": {
         "stress": 0,
-        "happiness": 0,
         "health": 0,
         "free_time": 0,
         "net_worth": 0,
