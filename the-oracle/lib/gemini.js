@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
 // Gemini 2.0 Flash — fast and cost efficient
-export const gemini = genAI.getGenerativeModel({ model: 'gemini-3.0-flash' })
+export const gemini = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' })
 
 /**
  * Send a prompt to Gemini and get a text response back
