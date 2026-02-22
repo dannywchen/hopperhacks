@@ -1,8 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { getSupabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 function formatAuthErrorMessage(error: unknown, isSignUp: boolean) {
   const fallback = isSignUp
@@ -31,7 +35,6 @@ function formatAuthErrorMessage(error: unknown, isSignUp: boolean) {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
@@ -42,7 +45,6 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const supabase = getSupabase();
 
     const { data, error } = isSignUp
       ? await supabase.auth.signUp({ email, password })
@@ -66,7 +68,7 @@ export default function LoginPage() {
           Authorization: `Bearer ${token}`,
         },
       }).catch(() => null);
-      router.push("/onboarding");
+      window.location.href = "/onboarding";
       return;
     }
 
