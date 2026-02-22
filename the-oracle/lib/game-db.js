@@ -12,12 +12,9 @@ function baseGameState(profileId) {
     profile_id: profileId,
     age: 18,
     stress: 50,
-    happiness: 50,
-    health: 50,
     free_time: 50,
     net_worth: 0,
     salary: 0,
-    career_xp: 0,
     decision_count: 0,
     last_saved_at: new Date().toISOString(),
   }

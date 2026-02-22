@@ -108,7 +108,8 @@ const STEP_CONTENT: Record<
   },
   simulation: {
     title: "Start your simulation",
-    subtitle: "Finalize your simulation settings before entering your dashboard.",
+    subtitle:
+      "We're going to run a simulation based on the information you shared and the conversation. You can always add more context later.",
   },
 };
 
@@ -317,6 +318,7 @@ function OnboardingSpriteProgress({ progress }: { progress: number }) {
           alt=""
           width={1536}
           height={1024}
+          loading="eager"
           className="onboarding-progress-frame-image"
           sizes="(max-width: 640px) 94vw, 640px"
           style={ONBOARDING_PROGRESS_IMAGE_STYLE}
@@ -973,33 +975,6 @@ export function OnboardingWizard() {
       : "";
     return [resumeText.trim(), linkedInSignal].filter(Boolean).join("\n\n");
   }, [hasLinkedinUrl, linkedinText, linkedinUrl, resumeText]);
-  const simulationSourceLabel = useMemo(() => {
-    const hasResumeUpload = resumeText.trim().length > 0;
-    const hasLinkedinSource =
-      linkedinImportedForCurrentUrl || linkedinText.trim().length > 0 || hasLinkedinUrl;
-
-    if (hasResumeUpload && hasLinkedinSource) {
-      return "your uploaded resume and LinkedIn profile";
-    }
-    if (hasResumeUpload) {
-      return "your uploaded resume";
-    }
-    if (hasLinkedinSource) {
-      return "your LinkedIn profile";
-    }
-    return "the information you shared";
-  }, [
-    hasLinkedinUrl,
-    linkedinImportedForCurrentUrl,
-    linkedinText,
-    resumeText,
-  ]);
-  const minimalSimulationSourceSentence = useMemo(() => {
-    return `We're going to run a simulation based on ${simulationSourceLabel}. You can always add more context later.`;
-  }, [simulationSourceLabel]);
-  const guidedSimulationSourceSentence = useMemo(() => {
-    return `We're going to run a simulation based on ${simulationSourceLabel} and the conversation. You can always add more context later.`;
-  }, [simulationSourceLabel]);
   const storyCharCount = useMemo(() => lifeStory.trim().length, [lifeStory]);
   const hasResumeSignal = useMemo(
     () => resumeText.trim().length > RESUME_MIN_CHARS || linkedinImportedForCurrentUrl,
@@ -2380,20 +2355,7 @@ export function OnboardingWizard() {
 
             {stepId === "simulation" ? (
               <div className="mx-auto w-full max-w-6xl">
-                <div className="arcane-panel arcane-panel-outline-fat rounded-[28px] p-5 shadow-[0_28px_80px_rgba(0,0,0,0.55),inset_0_0_0_1px_rgba(255,255,255,0.08)] sm:p-7">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h2 className="arcane-display-title text-2xl font-semibold text-zinc-50">
-                        Start your simulation
-                      </h2>
-                      <p className="mt-2 text-sm text-zinc-300">
-                        {onboardingPath === "minimal"
-                          ? minimalSimulationSourceSentence
-                          : guidedSimulationSourceSentence}
-                      </p>
-                    </div>
-                  </div>
-
+                <div>
                   <div className="mt-6 grid gap-7 md:grid-cols-2 md:gap-12">
                     {SIMULATION_MODE_OPTIONS.map((option) => {
                       const details = SIMULATION_MODE_DETAILS[option.id];
@@ -2403,29 +2365,37 @@ export function OnboardingWizard() {
                           key={option.id}
                           type="button"
                           onClick={() => selectSimulationMode(option.id)}
-                          className={`arcane-panel onboarding-path-card group relative flex min-h-[19rem] flex-col overflow-hidden rounded-3xl p-6 text-left transition md:min-h-[21rem] md:p-7 ${
+                          className={`arcane-panel onboarding-path-card group relative flex min-h-[19rem] flex-col overflow-hidden rounded-3xl border p-6 text-left transition-all duration-200 md:min-h-[21rem] md:p-7 ${
                             selected
-                              ? "arcane-panel-outline-fat bg-[linear-gradient(180deg,rgba(22,36,64,0.95),rgba(10,16,30,0.96))] shadow-[0_0_0_2px_rgba(168,193,255,0.38),0_18px_36px_rgba(0,0,0,0.42)]"
-                              : "arcane-panel-outline-thin bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.95] hover:opacity-100"
+                              ? "arcane-panel-outline-fat scale-[1.01] border-amber-200/70 bg-[linear-gradient(180deg,rgba(40,34,18,0.95),rgba(14,16,24,0.97))] shadow-[0_0_0_2px_rgba(245,208,124,0.55),0_0_34px_rgba(245,208,124,0.26),0_18px_36px_rgba(0,0,0,0.45)]"
+                              : "arcane-panel-outline-thin border-white/10 bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.8] saturate-75 hover:border-zinc-300/40 hover:opacity-100 hover:saturate-100"
                           }`}
                           aria-pressed={selected}
                         >
                           {selected ? (
-                            <span className="absolute right-3 top-3 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-900">
+                            <span className="absolute right-3 top-3 rounded-full border border-amber-200/70 bg-amber-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-950 shadow-[0_0_14px_rgba(245,208,124,0.55)]">
                               Selected
                             </span>
                           ) : null}
                           <p
                             className={`arcane-kicker text-[10px] ${
-                              selected ? "text-blue-200/90" : "text-zinc-400"
+                              selected ? "text-amber-200" : "text-zinc-400"
                             }`}
                           >
                             {details.kicker}
                           </p>
-                          <p className="arcane-display-title mt-1 text-2xl font-semibold leading-tight text-zinc-100 md:text-[1.75rem]">
+                          <p
+                            className={`arcane-display-title mt-1 text-2xl font-semibold leading-tight md:text-[1.75rem] ${
+                              selected ? "text-amber-50" : "text-zinc-100"
+                            }`}
+                          >
                             {option.label}
                           </p>
-                          <ul className="mt-3 max-w-[38ch] list-disc space-y-1.5 pl-5 pr-6 text-[0.93rem] leading-relaxed text-zinc-300">
+                          <ul
+                            className={`mt-3 max-w-[38ch] list-disc space-y-1.5 pl-5 pr-6 text-[0.93rem] leading-relaxed ${
+                              selected ? "text-zinc-100" : "text-zinc-300"
+                            }`}
+                          >
                             {details.bullets.map((bullet) => (
                               <li key={bullet}>{bullet}</li>
                             ))}
