@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -10,7 +9,6 @@ const supabase = createClient(
 );
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
@@ -22,15 +20,21 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const { error } = isSignUp
+    const { data, error } = isSignUp
       ? await supabase.auth.signUp({ email, password })
       : await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setError(error.message);
       setLoading(false);
+      return;
+    }
+
+    if (data.session) {
+      window.location.href = "/onboarding";
     } else {
-      router.push("/onboarding");
+      setError("Something went wrong. Please try again.");
+      setLoading(false);
     }
   };
 
