@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { horizonPresetToYears } from "@/lib/onboarding/config";
+import { getAuthUser } from "@/lib/auth";
+import { saveAgentMemory } from "@/lib/game-db";
 import type {
   OnboardingSnapshot,
   SimulationIntent,
@@ -411,6 +413,29 @@ export async function POST(req: Request) {
       },
       ...(snapshot ? { onboarding: snapshot } : {}),
     };
+
+    try {
+      const user = await getAuthUser(req);
+      if (user && snapshot) {
+        await saveAgentMemory({
+          profile_id: user.id,
+          category: "onboarding_interview",
+          key: "onboarding_snapshot",
+          content: JSON.stringify({
+            updatedAt: now,
+            interviewMessageCount: snapshot.interviewMessages.length,
+            reflectionCount: snapshot.reflections.length,
+            simulationHorizonPreset: snapshot.simulationHorizonPreset,
+            simulationIntents: snapshot.simulationIntents,
+            lifeStory: cleanText(snapshot.lifeStory, 2400),
+            reflections: snapshot.reflections.slice(0, 8),
+          }),
+          importance: 95,
+        });
+      }
+    } catch {
+      // Best effort persistence; onboarding setup generation should not fail if memory write fails.
+    }
 
     return NextResponse.json({
       setup,

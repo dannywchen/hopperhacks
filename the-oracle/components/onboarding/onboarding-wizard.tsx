@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   PanelRight,
+  Play,
   Volume2,
   VolumeX,
   Sparkles,
@@ -19,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { AIInputWithLoading } from "@/components/ui/ai-input-with-loading";
 import { AIVoiceInput } from "@/components/ui/ai-voice-input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Sheet,
   SheetContent,
@@ -32,6 +32,7 @@ import { clearEvents } from "@/lib/client/event-store";
 import { clearScenarios } from "@/lib/client/scenario-store";
 import { saveSetup } from "@/lib/client/setup-store";
 import { syncLocalSimulationStateToSupabase } from "@/lib/client/cloud-state";
+import { getSupabase } from "@/lib/supabase";
 import onboardingDesign from "@/design.json";
 import {
   INTERVIEW_DOMAINS,
@@ -90,15 +91,15 @@ const STEP_CONTENT: Record<
   { title: string; subtitle: string }
 > = {
   avatar: {
-    title: "Choose Your Magical Sprite",
-    subtitle: "Pick your witch or wizard look.",
+    title: "Customize Your Sprites",
+    subtitle: "Pick a look you'll use for the game simulation later!",
   },
   path: {
     title: "Choose Your Onboarding Path",
     subtitle: "Pick Minimal for a fast setup, or Detailed for deeper personalization.",
   },
   resume: {
-    title: "Add Your Wizard Record",
+    title: "Add Personal Details",
     subtitle: "Upload your resume or import LinkedIn to quickly personalize your simulation.",
   },
   story: {
@@ -235,7 +236,14 @@ type InterviewVoiceResponse = {
   error?: string;
 };
 
-const INTERVIEWER_SPRITE_VARIANTS = ["/interviewer/sprite_happy.png"];
+type InterviewerSpriteListResponse = {
+  sprites?: string[];
+  error?: string;
+};
+
+const DEFAULT_INTERVIEWER_SPRITES = ["/interviewer/sprite_happy.png"];
+const AUDIO_READY_TIMEOUT_MS = 2_500;
+const AUDIO_PREROLL_DELAY_MS = 120;
 
 function makeId(prefix: string) {
   const uuid = globalThis?.crypto?.randomUUID?.();
@@ -245,6 +253,7 @@ function makeId(prefix: string) {
 
 type FetchJsonOptions = RequestInit & {
   timeoutMs?: number;
+  withAuth?: boolean;
 };
 
 const ONBOARDING_PROGRESS_IMAGE_STYLE: CSSProperties = {
@@ -293,13 +302,27 @@ async function fetchJson<T>(
   url: string,
   options?: FetchJsonOptions,
 ): Promise<T> {
-  const { timeoutMs = 120_000, ...requestOptions } = options ?? {};
+  const { timeoutMs = 120_000, withAuth = true, ...requestOptions } = options ?? {};
   const controller = new AbortController();
   const timeoutId = globalThis?.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const headers = new Headers(requestOptions.headers ?? undefined);
+    if (withAuth) {
+      try {
+        const supabase = getSupabase();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session?.access_token && !headers.has("Authorization")) {
+          headers.set("Authorization", `Bearer ${session.access_token}`);
+        }
+      } catch {}
+    }
+
     const response = await fetch(url, {
       ...requestOptions,
+      headers,
       signal: controller.signal,
     });
 
@@ -399,6 +422,53 @@ function normalizeCoverage(
     );
   }
   return map;
+}
+
+function isIgnorablePlaybackError(error: unknown) {
+  const name = typeof error === "object" && error ? (error as { name?: string }).name : "";
+  const message =
+    typeof error === "object" && error ? (error as { message?: string }).message ?? "" : "";
+  const normalized = `${name} ${message}`.toLowerCase();
+  return (
+    normalized.includes("aborterror") ||
+    normalized.includes("interrupted by") ||
+    normalized.includes("play() request was interrupted")
+  );
+}
+
+function waitForAudioReady(audio: HTMLAudioElement, timeoutMs: number) {
+  return new Promise<void>((resolve, reject) => {
+    let done = false;
+    let timeoutId: number | null = null;
+
+    const cleanup = () => {
+      audio.removeEventListener("canplaythrough", onReady);
+      audio.removeEventListener("loadeddata", onReady);
+      audio.removeEventListener("error", onError);
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+    const finish = (handler: () => void) => {
+      if (done) return;
+      done = true;
+      cleanup();
+      handler();
+    };
+    const onReady = () => finish(resolve);
+    const onError = () =>
+      finish(() => reject(new Error("Interviewer voice could not be loaded.")));
+
+    audio.addEventListener("canplaythrough", onReady);
+    audio.addEventListener("loadeddata", onReady);
+    audio.addEventListener("error", onError);
+
+    timeoutId = window.setTimeout(() => finish(resolve), timeoutMs);
+
+    if (audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      finish(resolve);
+    }
+  });
 }
 
 function isInterviewMessageDomainId(
@@ -674,6 +744,7 @@ export function OnboardingWizard() {
     Record<OnboardingInterviewDomainId, number>
   >(emptyCoverage);
   const [interviewLoading, setInterviewLoading] = useState(false);
+  const [interviewStarted, setInterviewStarted] = useState(false);
   const [simHorizonPreset, setSimHorizonPreset] =
     useState<SimulationHorizonPreset>("10_years");
   const [simIntents, setSimIntents] =
@@ -686,6 +757,9 @@ export function OnboardingWizard() {
     null,
   );
   const [insightsOpen, setInsightsOpen] = useState(false);
+  const [interviewerSprites, setInterviewerSprites] = useState<string[]>(
+    DEFAULT_INTERVIEWER_SPRITES,
+  );
   const [interviewerSpriteIndex, setInterviewerSpriteIndex] = useState(0);
   const [autoVoiceEnabled, setAutoVoiceEnabled] = useState(true);
   const [audioPlaying, setAudioPlaying] = useState(false);
@@ -809,23 +883,16 @@ export function OnboardingWizard() {
         .find((message) => message.role === "assistant") ?? null,
     [interviewMessages],
   );
-  const currentInterviewerSprite =
-    INTERVIEWER_SPRITE_VARIANTS[
-      interviewerSpriteIndex % Math.max(1, INTERVIEWER_SPRITE_VARIANTS.length)
-    ] ?? INTERVIEWER_SPRITE_VARIANTS[0];
-  const layerOneNarrativeQuestions = useMemo(
-    () =>
-      INTERVIEW_DOMAINS.flatMap((domain) =>
-        domain.questionBank
-          .filter((question) => question.layer === "layer1")
-          .map((question) => question.prompt),
-      ).slice(0, 6),
-    [],
+  const hasAssistantQuestion = useMemo(
+    () => interviewMessages.some((message) => message.role === "assistant"),
+    [interviewMessages],
   );
-  const initialLifeQuestion =
-    layerOneNarrativeQuestions[0] ??
-    "Tell me the story of your life from childhood to today, including major moments that shaped you.";
-
+  const currentInterviewerSprite =
+    interviewerSprites[
+      interviewerSpriteIndex % Math.max(1, interviewerSprites.length)
+    ] ??
+    interviewerSprites[0] ??
+    DEFAULT_INTERVIEWER_SPRITES[0];
   const canAdvanceCurrentStep = useMemo(() => {
     if (stepId === "path") {
       return onboardingPath !== null;
@@ -839,8 +906,11 @@ export function OnboardingWizard() {
   const stopInterviewerSpeech = useCallback(() => {
     const audio = interviewAudioRef.current;
     if (audio) {
+      audio.onended = null;
+      audio.onerror = null;
       audio.pause();
-      audio.src = "";
+      audio.removeAttribute("src");
+      audio.load();
       interviewAudioRef.current = null;
     }
     const objectUrl = interviewAudioObjectUrlRef.current;
@@ -851,16 +921,22 @@ export function OnboardingWizard() {
     setAudioPlaying(false);
   }, []);
 
+  const cancelInterviewerSpeech = useCallback(() => {
+    interviewSpeechRequestIdRef.current += 1;
+    stopInterviewerSpeech();
+  }, [stopInterviewerSpeech]);
+
   const cycleInterviewerSprite = useCallback(() => {
     setInterviewerSpriteIndex((previous) => {
-      if (INTERVIEWER_SPRITE_VARIANTS.length <= 1) return previous;
-      return (previous + 1) % INTERVIEWER_SPRITE_VARIANTS.length;
+      if (interviewerSprites.length <= 1) return previous;
+      return (previous + 1) % interviewerSprites.length;
     });
-  }, []);
+  }, [interviewerSprites.length]);
 
   const speakInterviewerText = useCallback(
-    async (text: string) => {
-      if (!autoVoiceEnabled) return;
+    async (text: string, options?: { force?: boolean }) => {
+      const force = options?.force ?? false;
+      if (!autoVoiceEnabled && !force) return;
       const message = text.trim();
       if (!message) return;
 
@@ -890,9 +966,9 @@ export function OnboardingWizard() {
 
         const objectUrl = URL.createObjectURL(blob);
         const audio = new Audio(objectUrl);
+        audio.preload = "auto";
         interviewAudioRef.current = audio;
         interviewAudioObjectUrlRef.current = objectUrl;
-        setAudioPlaying(true);
 
         audio.onended = () => {
           if (interviewSpeechRequestIdRef.current !== requestId) return;
@@ -903,15 +979,73 @@ export function OnboardingWizard() {
           setVoiceError("Interviewer voice could not be played. You can continue by text.");
           stopInterviewerSpeech();
         };
+        audio.load();
+        await waitForAudioReady(audio, AUDIO_READY_TIMEOUT_MS);
+        if (interviewSpeechRequestIdRef.current !== requestId) return;
+
+        await new Promise((resolve) => window.setTimeout(resolve, AUDIO_PREROLL_DELAY_MS));
+        if (interviewSpeechRequestIdRef.current !== requestId) return;
+
+        audio.currentTime = 0;
         await audio.play();
+        if (interviewSpeechRequestIdRef.current !== requestId) return;
+        setAudioPlaying(true);
       } catch (err: any) {
         if (interviewSpeechRequestIdRef.current !== requestId) return;
+        if (isIgnorablePlaybackError(err)) {
+          stopInterviewerSpeech();
+          return;
+        }
         setVoiceError(err?.message ?? "Interviewer voice is unavailable right now.");
         stopInterviewerSpeech();
       }
     },
     [autoVoiceEnabled, stopInterviewerSpeech],
   );
+
+  useEffect(() => {
+    if (stepId !== "story") return;
+    let cancelled = false;
+
+    const loadInterviewerSprites = async () => {
+      try {
+        const result = await fetchJson<InterviewerSpriteListResponse>(
+          "/api/intake/interviewer-sprites",
+          {
+            cache: "no-store",
+            timeoutMs: 8_000,
+          },
+        );
+        if (cancelled) return;
+
+        const discoveredSprites = Array.isArray(result?.sprites)
+          ? result.sprites.filter(
+              (sprite): sprite is string =>
+                typeof sprite === "string" && sprite.trim().length > 0,
+            )
+          : [];
+        if (discoveredSprites.length === 0) return;
+        setInterviewerSprites(discoveredSprites);
+      } catch {}
+    };
+
+    void loadInterviewerSprites();
+    return () => {
+      cancelled = true;
+    };
+  }, [stepId]);
+
+  useEffect(() => {
+    if (stepId !== "story" || !interviewStarted) return;
+    if (!latestAssistantMessage) return;
+    if (lastSpokenAssistantIdRef.current === latestAssistantMessage.id) return;
+
+    if (lastSpokenAssistantIdRef.current !== null) {
+      cycleInterviewerSprite();
+    }
+    lastSpokenAssistantIdRef.current = latestAssistantMessage.id;
+    void speakInterviewerText(latestAssistantMessage.content);
+  }, [cycleInterviewerSprite, interviewStarted, latestAssistantMessage, speakInterviewerText, stepId]);
 
   useEffect(() => {
     setStepIndex((index) => Math.min(index, Math.max(steps.length - 1, 0)));
@@ -998,18 +1132,15 @@ export function OnboardingWizard() {
   ]);
 
   useEffect(() => {
-    if (stepId !== "story") return;
+    if (stepId !== "story" || !interviewStarted) return;
     if (interviewMessages.length > 0) return;
-    setInterviewMessages([
-      {
-        id: makeId("assistant"),
-        role: "assistant",
-        content: initialLifeQuestion,
-        createdAt: new Date().toISOString(),
-        domainId: "decision_archaeology",
-      },
-    ]);
-  }, [initialLifeQuestion, interviewMessages.length, stepId]);
+    void requestInterviewTurn([]);
+  }, [interviewMessages.length, interviewStarted, requestInterviewTurn, stepId]);
+
+  useEffect(() => {
+    if (interviewMessages.length === 0) return;
+    setInterviewStarted(true);
+  }, [interviewMessages.length]);
 
   useEffect(() => {
     if (stepId !== "story") return;
@@ -1031,17 +1162,36 @@ export function OnboardingWizard() {
     }
   }, [activeVoiceTarget, interviewLoading]);
 
+  useEffect(() => {
+    if (stepId === "story") return;
+    cancelInterviewerSpeech();
+    setActiveVoiceTarget(null);
+  }, [cancelInterviewerSpeech, stepId]);
+
+  useEffect(() => {
+    if (autoVoiceEnabled) return;
+    cancelInterviewerSpeech();
+  }, [autoVoiceEnabled, cancelInterviewerSpeech]);
+
   useEffect(
     () => () => {
       interviewRequestAbortRef.current?.abort();
       interviewRequestAbortRef.current = null;
+      cancelInterviewerSpeech();
     },
-    [],
+    [cancelInterviewerSpeech],
   );
 
   function toggleVoice(target: SpeechTarget) {
     setVoiceError(null);
     setActiveVoiceTarget((previous) => (previous === target ? null : target));
+  }
+
+  function startInterview() {
+    if (interviewStarted) return;
+    setVoiceError(null);
+    setError(null);
+    setInterviewStarted(true);
   }
 
   async function handleResumeUpload(file: File) {
@@ -1091,6 +1241,7 @@ export function OnboardingWizard() {
   }
 
   async function submitStoryAnswer(rawInput?: string) {
+    if (!interviewStarted || !hasAssistantQuestion) return;
     const trimmed = (rawInput ?? storyInput).trim();
     if (!trimmed || interviewLoading) return;
     setStoryInput("");
@@ -1230,9 +1381,73 @@ export function OnboardingWizard() {
     "arcane-sprite-tab arcane-sprite-tab-active";
   const onboardingStepPanelClass =
     "arcane-panel arcane-panel-outline-fat rounded-2xl p-5 sm:p-6";
+  const onboardingContentMaxWidthClass =
+    stepId === "story" ? "max-w-[84rem]" : isWideStep ? "max-w-6xl" : "max-w-3xl";
+  const storyBubbleAssistantClass =
+    "max-w-[88%] rounded-[18px] rounded-bl-[8px] border border-zinc-700/80 bg-zinc-800/90 px-4 py-3 text-[0.92rem] leading-relaxed text-zinc-100";
+  const storyBubbleUserClass =
+    "max-w-[88%] rounded-[18px] rounded-br-[8px] border border-zinc-600/80 bg-zinc-700/95 px-4 py-3 text-[0.92rem] leading-relaxed text-zinc-100";
+  const insightsPanel = (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-white/15 bg-zinc-900/70 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-medium text-zinc-100">Simulation accuracy</p>
+          <p className="text-sm text-zinc-300">{simulationAccuracy}%</p>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800">
+          <div
+            className="h-full rounded-full bg-zinc-100 transition-[width] duration-300"
+            style={{ width: `${simulationAccuracy}%` }}
+          />
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-zinc-400">
+          You can continue to simulations at any point. Sharing more details improves accuracy.
+        </p>
+      </div>
+
+      <div className="space-y-3 rounded-2xl border border-white/15 bg-zinc-900/70 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
+          Focus areas
+        </p>
+        <p className="text-[11px] text-zinc-400">
+          {coveredDomainCount} of {INTERVIEW_DOMAINS.length}
+        </p>
+      </div>
+      <p className="text-xs leading-relaxed text-zinc-500">
+        Coverage updates as your interview responses grow.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {interviewQuestionCatalog.map((item) => {
+          const domainCoverage = coverage[item.domainId] ?? 0;
+          return (
+            <div
+              key={item.domainId}
+              className="rounded-xl border border-white/10 bg-zinc-950/70 p-2.5"
+            >
+              <p className="text-xs font-semibold text-zinc-200">{item.label}</p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                <div
+                  className="h-full rounded-full bg-zinc-200 transition-[width] duration-300"
+                  style={{ width: `${Math.max(4, Math.round(domainCoverage))}%` }}
+                />
+              </div>
+              <p className="mt-1 text-[11px] text-zinc-400">
+                {Math.round(domainCoverage)}%
+              </p>
+            </div>
+          );
+        })}
+      </div>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="mystic-bg min-h-screen text-zinc-100" style={ONBOARDING_OUTLINE_VARS}>
+    <div
+      className={`mystic-bg min-h-screen text-zinc-100 ${stepId === "story" ? "h-screen overflow-hidden" : ""}`}
+      style={ONBOARDING_OUTLINE_VARS}
+    >
       <div className="relative z-10 w-full px-2 pt-2 sm:px-3 sm:pt-3">
         <div className="relative flex min-h-[5.2rem] items-start sm:min-h-[6.1rem]">
           <div className="pointer-events-none absolute left-1/2 top-1/2 w-[min(82vw,31rem)] sm:w-[min(76vw,33rem)] -translate-x-1/2 -translate-y-1/2">
@@ -1242,19 +1457,25 @@ export function OnboardingWizard() {
       </div>
 
       <div
-        className={`relative z-10 mx-auto flex min-h-[calc(100vh-7rem)] w-full flex-col px-4 pb-6 pt-4 sm:px-6 ${
-          isWideStep ? "max-w-6xl" : "max-w-3xl"
-        }`}
+        className={`relative z-10 mx-auto flex w-full flex-col px-4 pt-4 sm:px-6 ${
+          onboardingContentMaxWidthClass
+        } ${stepId === "story" ? "h-[calc(100vh-7rem)] overflow-hidden pb-4" : "min-h-[calc(100vh-7rem)] pb-6"}`}
       >
-        <header className="text-center">
+        <header className={`text-center ${stepId === "story" ? "shrink-0" : ""}`}>
           <h1 className="arcane-display-title text-3xl leading-tight text-zinc-50 sm:text-4xl">
             {step.title}
           </h1>
           <p className="mt-2 text-sm text-zinc-400 sm:text-base">{step.subtitle}</p>
         </header>
 
-        <section className={`flex-1 ${isPathStep ? "mt-6 flex items-start" : "mt-10"}`}>
-          <div className={`mx-auto w-full ${isWideStep ? "max-w-6xl" : "max-w-3xl"}`}>
+        <section
+          className={`flex-1 min-h-0 ${isPathStep ? "mt-6 flex items-start" : stepId === "story" ? "mt-6 overflow-hidden" : "mt-10"}`}
+        >
+          <div
+            className={`mx-auto w-full ${onboardingContentMaxWidthClass} ${
+              stepId === "story" ? "h-full min-h-0 overflow-hidden" : ""
+            }`}
+          >
             {stepId === "avatar" ? (
               <div className={onboardingStepPanelClass}>
                 <div className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] md:gap-7">
@@ -1560,106 +1781,173 @@ export function OnboardingWizard() {
             ) : null}
 
             {stepId === "story" ? (
-                <div className="space-y-5">
-                  <div className="arcane-panel arcane-panel-outline-thin rounded-2xl p-4 sm:p-5">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm text-zinc-300">
-                          Simulation Accuracy: {simulationAccuracy}%
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <button
-                              type="button"
-                              className="text-xs text-zinc-400 underline decoration-zinc-600 underline-offset-4 transition hover:text-zinc-200"
-                              aria-label="Simulation accuracy info"
-                            >
-                              How this works
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-72 border-white/20 bg-zinc-950 p-3 text-xs text-zinc-300">
-                            You can continue to simulations at any point. Sharing more details will make the results more accurate.
-                          </PopoverContent>
-                        </Popover>
-                        <Button
-                          type="button"
-                          onClick={goToSimulationStep}
-                          disabled={saving}
-                          className="arcane-button-primary h-9 rounded-md px-4"
-                        >
-                          Continue to simulations
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-zinc-800">
-                      <div
-                        className="h-full rounded-full bg-zinc-200 transition-[width] duration-300"
-                        style={{ width: `${simulationAccuracy}%` }}
-                      />
-                    </div>
+              <div className="flex h-full min-h-0 flex-col gap-4">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                  <Sheet open={insightsOpen} onOpenChange={setInsightsOpen}>
+                    <SheetTrigger asChild>
+                      <Button
+                        type="button"
+                        className="arcane-button-secondary h-9 rounded-md px-3 text-xs"
+                      >
+                        <PanelRight className="h-4 w-4" />
+                        Insights
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent
+                      side="right"
+                      className="w-[min(94vw,450px)] border-white/15 bg-zinc-950 p-5 text-zinc-100"
+                    >
+                      <SheetHeader>
+                        <SheetTitle className="text-left text-zinc-100">
+                          Interview insights
+                        </SheetTitle>
+                        <SheetDescription className="text-left text-zinc-400">
+                          Simulation accuracy and focus-area coverage.
+                        </SheetDescription>
+                      </SheetHeader>
+                      <div className="mt-5">{insightsPanel}</div>
+                    </SheetContent>
+                  </Sheet>
+
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setVoiceError(null);
+                      setAutoVoiceEnabled((previous) => {
+                        const nextEnabled = !previous;
+                        if (!nextEnabled) {
+                          cancelInterviewerSpeech();
+                        }
+                        return nextEnabled;
+                      });
+                    }}
+                    className="arcane-button-secondary h-9 rounded-md px-3 text-xs"
+                  >
+                    {autoVoiceEnabled ? (
+                      <Volume2 className="h-4 w-4" />
+                    ) : (
+                      <VolumeX className="h-4 w-4" />
+                    )}
+                    {audioPlaying ? "Speaking..." : autoVoiceEnabled ? "Voice on" : "Voice off"}
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (!latestAssistantMessage?.content) return;
+                      setVoiceError(null);
+                      void speakInterviewerText(latestAssistantMessage.content, {
+                        force: true,
+                      });
+                    }}
+                    disabled={!latestAssistantMessage?.content}
+                    className="arcane-button-secondary h-9 rounded-md px-3 text-xs disabled:opacity-40"
+                  >
+                    Replay
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={goToSimulationStep}
+                    disabled={saving}
+                    className="arcane-button-primary h-9 rounded-md px-4"
+                  >
+                    Continue to simulations
+                  </Button>
+                </div>
+
+                <div className="grid min-h-0 flex-1 items-start gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                  <div className="relative hidden min-h-0 items-center justify-center px-4 pb-2 pt-4 lg:flex">
+                    <Image
+                      src={currentInterviewerSprite}
+                      alt="AI interviewer sprite"
+                      width={960}
+                      height={1200}
+                      priority={stepId === "story"}
+                      className={`h-auto max-h-[min(76vh,760px)] w-auto max-w-full object-contain object-top drop-shadow-[0_30px_40px_rgba(0,0,0,0.45)] transition-transform duration-500 ${
+                        audioPlaying ? "scale-[1.01]" : "scale-100"
+                      }`}
+                      sizes="(max-width: 1024px) 94vw, 62vw"
+                    />
                   </div>
 
-                  <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-                    <div className="arcane-panel arcane-panel-outline-fat rounded-2xl p-4 sm:p-5">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-xs text-zinc-400">{interviewAnswerCount} answers</p>
-                      </div>
-
-                      <div
-                        ref={storyScrollRef}
-                        className="mt-4 h-[360px] overflow-y-auto pr-1 scroll-smooth"
-                      >
-                        <div className="space-y-3 pb-2">
-                          {interviewMessages.map((message) => {
-                            const isAssistant = message.role === "assistant";
-                            return isAssistant ? (
-                              <p
-                                key={message.id}
-                                className="mr-10 max-w-[88%] text-sm leading-relaxed text-zinc-200"
-                              >
-                                {message.content}
-                              </p>
-                            ) : (
-                              <div
-                                key={message.id}
-                                className="flex w-full justify-end gap-1.5 pl-8 sm:gap-2 sm:pl-12"
-                              >
-                                <div className="max-w-[78%] sm:max-w-[84%]">
-                                  <div
-                                    className="onboarding-chat-bubble relative rounded-[20px] rounded-br-[8px] bg-zinc-700 px-4 py-3 text-sm leading-relaxed text-zinc-100 before:absolute before:right-[-5px] before:bottom-3 before:h-3 before:w-3 before:rotate-45 before:rounded-[2px] before:bg-zinc-700"
-                                  >
-                                    {message.content}
-                                  </div>
-                                </div>
-                                <div className="mb-0.5 shrink-0 self-end">
-                                  <PixelSprite avatar={avatar} size={28} />
-                                </div>
-                              </div>
-                            );
-                          })}
-                          {interviewLoading ? (
-                            <div className="inline-flex items-center px-1 py-1 text-sm text-zinc-400">
-                              <span className="onboarding-thinking-text text-xs text-zinc-400">
-                                Thinking<span className="onboarding-thinking-ellipsis">...</span>
-                              </span>
-                            </div>
-                          ) : null}
+                  <div className="flex h-full min-h-0 flex-col rounded-[24px] bg-zinc-900/55 p-3 sm:p-4">
+                    <div className="shrink-0 flex items-center justify-between gap-3 pb-3">
+                        <div>
+                          <p className="text-sm font-semibold text-zinc-100">Interview</p>
+                          <p className="text-xs text-zinc-400">
+                            Type or use the mic. Scroll to review full conversation.
+                          </p>
+                        </div>
+                        <div className="rounded-full border border-white/15 bg-zinc-950/70 px-3 py-1 text-[11px] text-zinc-300">
+                          {!interviewStarted
+                            ? "Not started"
+                            : activeVoiceTarget === "story"
+                            ? "Recording"
+                            : "Idle"}
                         </div>
                       </div>
+
+                      {interviewStarted ? (
+                        <div
+                          ref={storyScrollRef}
+                          className="mt-3 min-h-0 flex-1 overflow-y-auto pr-2 scroll-smooth"
+                        >
+                          <div className="space-y-3 pb-2">
+                            {interviewMessages.map((message) => {
+                              const isAssistant = message.role === "assistant";
+                              return isAssistant ? (
+                                <div key={message.id} className="flex justify-start pr-8 sm:pr-14">
+                                  <p className={storyBubbleAssistantClass}>{message.content}</p>
+                                </div>
+                              ) : (
+                                <div
+                                  key={message.id}
+                                  className="flex w-full justify-end gap-1.5 pl-8 sm:gap-2 sm:pl-12"
+                                >
+                                  <div className={storyBubbleUserClass}>{message.content}</div>
+                                  <div className="mb-0.5 shrink-0 self-end rounded-full border border-zinc-500/60 bg-zinc-800 p-0.5">
+                                    <PixelSprite avatar={avatar} size={26} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {interviewLoading ? (
+                              <div className="inline-flex items-center rounded-full border border-white/15 bg-zinc-900 px-3 py-1 text-xs text-zinc-400">
+                                Thinking...
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 flex flex-1 items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={startInterview}
+                            className="group inline-flex h-36 w-36 items-center justify-center rounded-full border border-white/20 bg-zinc-900/85 text-zinc-100 shadow-[0_20px_34px_rgba(0,0,0,0.35)] transition hover:scale-[1.02] hover:bg-zinc-900"
+                            aria-label="Start interview"
+                          >
+                            <span className="sr-only">Start interview</span>
+                            <Play className="h-14 w-14 translate-x-0.5 fill-current" />
+                          </button>
+                        </div>
+                      )}
 
                       <AIInputWithLoading
                         id="onboarding-story-input"
                         value={storyInput}
                         onValueChange={setStoryInput}
-                        placeholder="Feel free to type your responses or click the mic to use your voice so we can transcribe it for you."
-                        minHeight={120}
-                        maxHeight={260}
+                        placeholder={
+                          interviewStarted
+                            ? hasAssistantQuestion
+                              ? "Type your answer or use the mic for transcription."
+                              : "Interviewer is preparing the first question..."
+                            : "Press play to start the interview."
+                        }
+                        minHeight={108}
+                        maxHeight={240}
                         loadingDuration={900}
                         onSubmit={submitStoryAnswer}
                         submitting={interviewLoading}
-                        disabled={interviewLoading}
+                        disabled={!interviewStarted || !hasAssistantQuestion || interviewLoading}
                         inlineAction={
                           <AIVoiceInput
                             active={activeVoiceTarget === "story"}
@@ -1676,54 +1964,16 @@ export function OnboardingWizard() {
                             variant="compact"
                             visualizerBars={14}
                             className="py-0"
-                            disabled={interviewLoading}
+                            disabled={!interviewStarted || !hasAssistantQuestion || interviewLoading}
                           />
                         }
                         submittedText="Thinking..."
                         showStatusText={false}
-                        className="w-full max-w-none py-0"
+                        className="w-full max-w-none shrink-0 py-0"
                       />
-                    </div>
-
-                    <div className="arcane-panel arcane-panel-outline-thin rounded-2xl p-4 lg:sticky lg:top-6">
-                      <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">
-                        Focus areas
-                      </p>
-                      <p className="mt-2 text-sm text-zinc-300">
-                        These update automatically as you share more details.
-                      </p>
-                      <p className="mt-2 text-xs text-zinc-500">
-                        {coveredDomainCount} of {INTERVIEW_DOMAINS.length} areas covered
-                      </p>
-                      <div className="mt-4 grid grid-cols-2 gap-3">
-                        {interviewQuestionCatalog.map((item) => {
-                          const domainCoverage = coverage[item.domainId] ?? 0;
-                          return (
-                            <div
-                              key={item.domainId}
-                              className="rounded-xl bg-zinc-900/70 p-3"
-                            >
-                              <p className="text-sm font-medium text-zinc-100">
-                                {item.label}
-                              </p>
-                              <div className="mt-3">
-                                <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
-                                  <div
-                                    className="h-full rounded-full bg-zinc-300 transition-[width] duration-300"
-                                    style={{ width: `${Math.max(4, Math.round(domainCoverage))}%` }}
-                                  />
-                                </div>
-                                <p className="mt-2 text-[11px] text-zinc-400">
-                                  {Math.round(domainCoverage)}%
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
                   </div>
                 </div>
+              </div>
             ) : null}
 
             {stepId === "simulation" ? (

@@ -1,16 +1,379 @@
 import { NextResponse } from "next/server";
-import { interviewDomainById } from "@/lib/onboarding/config";
+import { INTERVIEW_DOMAINS, interviewDomainById } from "@/lib/onboarding/config";
 import {
+  interviewReflectionLayerSchema,
   interviewRequestSchema,
-  mockInterviewResponse,
+  interviewStrategistLayerSchema,
+  mergeReflections,
   normalizeInterviewMessages,
   reflectionCoverageMap,
 } from "@/lib/onboarding/interview";
-import type { OnboardingDomainReflection } from "@/lib/types";
+import type {
+  OnboardingDomainReflection,
+  OnboardingInterviewDomainId,
+  OnboardingInterviewMessage,
+} from "@/lib/types";
+import { getAuthUser } from "@/lib/auth";
+import { saveAgentMemory } from "@/lib/game-db";
+
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const REQUIRED_GEMINI_MODEL = "gemini-3-flash";
+
+type GeminiGenerateResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+  }>;
+  error?: {
+    message?: string;
+  };
+};
+
+type InterviewTurnResult = {
+  nextPrompt: {
+    domainId: OnboardingInterviewDomainId;
+    question: string;
+    action: "follow_up" | "advance_domain";
+    rationale: string;
+    shouldSuggestSimulate: boolean;
+  };
+  reflections: OnboardingDomainReflection[];
+  provider: "gemini" | "local";
+  model?: string;
+};
+
+type LatestAnswerAssessment = {
+  isTooShort: boolean;
+  isLikelyOffTopic: boolean;
+  wordCount: number;
+  charCount: number;
+  overlapCount: number;
+  reason: string;
+};
 
 function errorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message;
   return "Unable to generate interview follow-up.";
+}
+
+function sanitizeText(text: string, maxChars = 600) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, maxChars)}...`;
+}
+
+function transcript(messages: OnboardingInterviewMessage[]) {
+  return messages
+    .slice(-24)
+    .map((message, index) => {
+      const role = message.role === "assistant" ? "Interviewer" : "Candidate";
+      const domain = message.domainId ? ` [${message.domainId}]` : "";
+      return `${index + 1}. ${role}${domain}: ${sanitizeText(message.content, 900)}`;
+    })
+    .join("\n");
+}
+
+function domainCatalog() {
+  return INTERVIEW_DOMAINS.map((domain) => {
+    const sampleQuestions = domain.questionBank
+      .slice(0, 3)
+      .map((question) => question.prompt)
+      .join(" | ");
+    return [
+      `- id: ${domain.id}`,
+      `  label: ${domain.label}`,
+      `  starterQuestion: ${domain.starterQuestion}`,
+      `  followUpQuestion: ${domain.followUpQuestion}`,
+      `  keywords: ${domain.keywords.join(", ")}`,
+      `  sampleQuestions: ${sampleQuestions}`,
+    ].join("\n");
+  }).join("\n\n");
+}
+
+function extractJsonObject(rawText: string) {
+  const fenced = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    return fenced[1].trim();
+  }
+
+  const firstBrace = rawText.indexOf("{");
+  const lastBrace = rawText.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return rawText.slice(firstBrace, lastBrace + 1).trim();
+  }
+
+  return rawText.trim();
+}
+
+function tokenize(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function assessLatestAnswer(messages: OnboardingInterviewMessage[]): LatestAnswerAssessment {
+  const latestUser = [...messages].reverse().find((message) => message.role === "user");
+  const latestAssistant = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+
+  const answer = latestUser?.content ?? "";
+  const question = latestAssistant?.content ?? "";
+  const answerTokens = tokenize(answer);
+  const questionTokens = tokenize(question);
+  const stopwords = new Set([
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "how",
+    "i",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "to",
+    "was",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "with",
+    "you",
+    "your",
+  ]);
+  const answerKeywords = new Set(answerTokens.filter((token) => !stopwords.has(token)));
+  const questionKeywords = questionTokens.filter((token) => !stopwords.has(token));
+  const overlapCount = questionKeywords.reduce(
+    (count, token) => (answerKeywords.has(token) ? count + 1 : count),
+    0,
+  );
+  const isTooShort = answerTokens.length > 0 && (answerTokens.length < 6 || answer.trim().length < 25);
+  const isLikelyOffTopic =
+    questionKeywords.length >= 4 && answerTokens.length >= 3 && overlapCount === 0;
+
+  let reason = "Answer appears substantive and related.";
+  if (isTooShort && isLikelyOffTopic) {
+    reason = "Answer is both brief and likely off-topic.";
+  } else if (isTooShort) {
+    reason = "Answer is too brief for evidence-based reflection.";
+  } else if (isLikelyOffTopic) {
+    reason = "Answer appears weakly related to the interviewer question.";
+  }
+
+  return {
+    isTooShort,
+    isLikelyOffTopic,
+    wordCount: answerTokens.length,
+    charCount: answer.trim().length,
+    overlapCount,
+    reason,
+  };
+}
+
+async function generateInterviewTurnWithGemini(input: {
+  resumeText?: string | null;
+  lifeStory?: string | null;
+  simulationIntents?: string[];
+  messages: OnboardingInterviewMessage[];
+  previousReflections: OnboardingDomainReflection[];
+}): Promise<InterviewTurnResult> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing GEMINI_API_KEY.");
+  }
+
+  const model = REQUIRED_GEMINI_MODEL;
+  const answerAssessment = assessLatestAnswer(input.messages);
+  const prompt = [
+    "You are an adaptive onboarding interviewer.",
+    "Goal: ask the single best next interview question while updating focus-area reflections.",
+    "Use all provided context. Every reply must include a brief reaction to the candidate answer and then one follow-up question.",
+    "",
+    "Rules:",
+    "- Output JSON only, no markdown, no prose outside JSON.",
+    "- Choose domainId from the allowed domain catalog.",
+    "- Prefer following up on weak/missing focus areas.",
+    "- nextPrompt.question must be 2-3 sentences total.",
+    "- Sentence 1-2: concise reaction to what the candidate said (not generic filler).",
+    "- Final sentence: exactly one follow-up question ending with '?'.",
+    "- If latest answer is short/vague/off-topic, set action=follow_up and ask the candidate to answer the same core question with specifics.",
+    "- If latest answer is short/off-topic, keep same domainId as the latest assistant question domain unless impossible.",
+    "- coverage is 0-100 and should rise as evidence improves.",
+    "- shouldSuggestSimulate becomes true only when enough coverage exists across domains.",
+    "",
+    "Required JSON shape:",
+    "{",
+    '  "nextPrompt": {',
+    '    "domainId": "decision_archaeology | stress_response | habits_rhythm | health | relationships | money",',
+    '    "question": "...",',
+    '    "action": "follow_up | advance_domain",',
+    '    "rationale": "...",',
+    '    "shouldSuggestSimulate": true',
+    "  },",
+    '  "reflections": [',
+    "    {",
+    '      "domainId": "...",',
+    '      "summary": "...",',
+    '      "coverage": 0,',
+    '      "confidence": "low | medium | high",',
+    '      "evidence": ["..."]',
+    "    }",
+    "  ]",
+    "}",
+    "",
+    "Domain catalog:",
+    domainCatalog(),
+    "",
+    "Simulation intents:",
+    JSON.stringify(input.simulationIntents ?? []),
+    "",
+    "Previous reflections JSON:",
+    JSON.stringify(input.previousReflections ?? []),
+    "",
+    "Resume text (optional):",
+    sanitizeText(input.resumeText ?? "", 4000),
+    "",
+    "Life story aggregate (optional):",
+    sanitizeText(input.lifeStory ?? "", 4000),
+    "",
+    "Conversation transcript:",
+    transcript(input.messages),
+    "",
+    "Latest answer quality signal:",
+    JSON.stringify(answerAssessment),
+  ].join("\n");
+
+  const response = await fetch(
+    `${GEMINI_API_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.35,
+          maxOutputTokens: 1400,
+          responseMimeType: "application/json",
+        },
+      }),
+    },
+  );
+
+  const payload = (await response
+    .json()
+    .catch(() => null)) as GeminiGenerateResponse | null;
+
+  if (!response.ok) {
+    const detail = payload?.error?.message || `Gemini request failed with status ${response.status}.`;
+    throw new Error(detail);
+  }
+
+  const candidateText = payload?.candidates?.[0]?.content?.parts
+    ?.map((part) => part?.text ?? "")
+    .join("")
+    .trim();
+
+  if (!candidateText) {
+    throw new Error("Gemini returned an empty response.");
+  }
+
+  const parsedJson = JSON.parse(extractJsonObject(candidateText)) as {
+    reflections?: unknown;
+    nextPrompt?: unknown;
+  };
+
+  const reflectionBundle = interviewReflectionLayerSchema.parse({
+    reflections: parsedJson.reflections ?? [],
+  });
+  const nextPrompt = interviewStrategistLayerSchema.parse(parsedJson.nextPrompt ?? {});
+
+  const mergedReflections = mergeReflections(
+    input.previousReflections,
+    reflectionBundle.reflections,
+  );
+
+  return {
+    nextPrompt,
+    reflections: mergedReflections,
+    provider: "gemini",
+    model,
+  };
+}
+
+async function persistInterviewProgress(params: {
+  request: Request;
+  messages: OnboardingInterviewMessage[];
+  reflections: OnboardingDomainReflection[];
+  nextQuestion: string;
+}) {
+  try {
+    const user = await getAuthUser(params.request);
+    if (!user) return;
+
+    const latestUserMessage = [...params.messages]
+      .reverse()
+      .find((message) => message.role === "user");
+    const coverage = reflectionCoverageMap(params.reflections);
+    const turnKeySuffix = (latestUserMessage?.id ?? Date.now().toString())
+      .replace(/[^a-zA-Z0-9_-]/g, "")
+      .slice(-28);
+
+    const writes = [
+      saveAgentMemory({
+        profile_id: user.id,
+        category: "onboarding_interview",
+        key: "onboarding_interview_progress",
+        content: [
+          `updated_at=${new Date().toISOString()}`,
+          `next_question=${sanitizeText(params.nextQuestion, 260)}`,
+          ...INTERVIEW_DOMAINS.map((domain) => `${domain.id}=${coverage[domain.id] ?? 0}`),
+        ].join("\n"),
+        importance: 90,
+      }),
+    ];
+
+    if (latestUserMessage?.content) {
+      writes.push(
+        saveAgentMemory({
+          profile_id: user.id,
+          category: "onboarding_interview",
+          key: `onboarding_turn_${turnKeySuffix}`,
+          content: sanitizeText(latestUserMessage.content, 2000),
+          importance: 74,
+        }),
+      );
+    }
+
+    await Promise.allSettled(writes);
+  } catch {
+    // Non-blocking persistence: interview should continue even if memory storage is unavailable.
+  }
 }
 
 export async function POST(req: Request) {
@@ -28,38 +391,56 @@ export async function POST(req: Request) {
 
     if (messages.length === 0) {
       const seedDomain = interviewDomainById("decision_archaeology");
-      const seedQuestion = seedDomain.questionBank[0]?.prompt ?? seedDomain.starterQuestion;
+      const seedMessage: OnboardingInterviewMessage = {
+        id: `seed-${Date.now()}`,
+        role: "assistant",
+        content: seedDomain.starterQuestion,
+        createdAt: new Date().toISOString(),
+        domainId: seedDomain.id,
+      };
+      const seedTurn = await generateInterviewTurnWithGemini({
+        resumeText: body.resumeText,
+        lifeStory: body.lifeStory,
+        simulationIntents: body.simulationIntents,
+        messages: [seedMessage],
+        previousReflections,
+      });
       return NextResponse.json({
-        nextPrompt: {
-          domainId: seedDomain.id,
-          question: seedQuestion,
-          action: "advance_domain",
-          rationale: "Start with life narrative to establish baseline context.",
-          shouldSuggestSimulate: false,
-        },
-        reflections: previousReflections,
-        coverage: reflectionCoverageMap(previousReflections),
+        nextPrompt: seedTurn.nextPrompt,
+        reflections: seedTurn.reflections,
+        coverage: reflectionCoverageMap(seedTurn.reflections),
         meta: {
-          mode: "heuristic",
-          provider: "local",
+          mode: "llm_seed",
+          provider: seedTurn.provider,
+          model: seedTurn.model,
           usedFallback: false,
         },
       });
     }
 
-    const mock = mockInterviewResponse({
-      lifeStory: body.lifeStory,
+    const turn = await generateInterviewTurnWithGemini({
       resumeText: body.resumeText,
+      lifeStory: body.lifeStory,
+      simulationIntents: body.simulationIntents,
       messages,
       previousReflections,
     });
 
+    await persistInterviewProgress({
+      request: req,
+      messages,
+      reflections: turn.reflections,
+      nextQuestion: turn.nextPrompt.question,
+    });
+
     return NextResponse.json({
-      ...mock,
-      coverage: reflectionCoverageMap(mock.reflections),
+      nextPrompt: turn.nextPrompt,
+      reflections: turn.reflections,
+      coverage: reflectionCoverageMap(turn.reflections),
       meta: {
-        mode: "heuristic",
-        provider: "local",
+        mode: "llm",
+        provider: turn.provider,
+        model: turn.model,
         usedFallback: false,
       },
     });
@@ -67,8 +448,14 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error: errorMessage(error),
+        meta: {
+          mode: "llm_error",
+          provider: "gemini",
+          model: REQUIRED_GEMINI_MODEL,
+          usedFallback: false,
+        },
       },
-      { status: 500 },
+      { status: 503 },
     );
   }
 }
