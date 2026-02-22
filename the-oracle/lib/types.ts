@@ -1,6 +1,5 @@
 export type FactorId =
   | "health"
-  | "money"
   | "career"
   | "freeTime"
   | "fulfillment"
@@ -87,7 +86,7 @@ export type OnboardingAvatar = {
 };
 
 export type OnboardingLinkedinProfile = {
-  source: "apify";
+  source: "apify" | "resume";
   profileUrl: string;
   scrapedAt: string;
   fullName?: string;
@@ -232,7 +231,6 @@ export type UserSetup = {
 
 export type SimulationMetrics = {
   health: number;
-  money: number;
   career: number;
   relationships: number;
   fulfillment: number;
@@ -242,6 +240,7 @@ export type SimulationMetrics = {
   salary: number;
   monthlyExpenses: number;
   confidence: number;
+  projectedDeathDate: number;
 };
 
 export type SimulationActionType =

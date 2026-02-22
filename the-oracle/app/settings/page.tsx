@@ -8,17 +8,12 @@ import {
   PlusCircle,
   Save,
   Trash2,
-  UserRoundSearch,
-  WandSparkles,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
-import { hydrateLocalSimulationStateFromSupabase } from "@/lib/client/cloud-state";
-import { loadSetup } from "@/lib/client/setup-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ClassicLoader from "@/components/ui/loader";
 import { Textarea } from "@/components/ui/textarea";
-import type { UserSetup } from "@/lib/types";
 
 type AgentMemory = {
   id?: string;
@@ -61,19 +56,13 @@ async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T>
 }
 
 export default function SettingsPage() {
-  const [setup, setSetup] = useState<UserSetup | null>(() => {
-    if (typeof window === "undefined") return null;
-    return loadSetup();
-  });
   const [memories, setMemories] = useState<AgentMemory[]>([]);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draftContent, setDraftContent] = useState("");
   const [draftCategory, setDraftCategory] = useState("");
   const [draftImportance, setDraftImportance] = useState("60");
-  const [newCategory, setNewCategory] = useState("custom");
   const [newKey, setNewKey] = useState("");
   const [newContent, setNewContent] = useState("");
-  const [newImportance, setNewImportance] = useState("60");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,17 +89,8 @@ export default function SettingsPage() {
         return;
       }
 
-      const [syncResult, memoryResult] = await Promise.all([
-        hydrateLocalSimulationStateFromSupabase().catch(() => ({ setup: null })),
-        authFetch<AgentMemory[]>("/api/game/memory"),
-      ]);
-
+      const memoryResult = await authFetch<AgentMemory[]>("/api/game/memory");
       setMemories(memoryResult ?? []);
-      if (syncResult?.setup) {
-        setSetup(syncResult.setup);
-      } else {
-        setSetup(loadSetup());
-      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unable to load settings.");
     } finally {
@@ -173,9 +153,8 @@ export default function SettingsPage() {
 
   const addMemory = useCallback(async () => {
     const key = cleanText(newKey, 120);
-    const category = cleanText(newCategory, 120);
     const content = cleanText(newContent, 20_000);
-    if (!key || !category || !content) return;
+    if (!key || !content) return;
 
     setSaving(true);
     setError(null);
@@ -184,22 +163,20 @@ export default function SettingsPage() {
         method: "POST",
         body: JSON.stringify({
           key,
-          category,
+          category: "profile",
           content,
-          importance: Number.parseInt(newImportance, 10) || 60,
+          importance: 60,
         }),
       });
-      setNewCategory("custom");
       setNewKey("");
       setNewContent("");
-      setNewImportance("60");
       await loadContext();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unable to add memory.");
     } finally {
       setSaving(false);
     }
-  }, [loadContext, newCategory, newContent, newImportance, newKey]);
+  }, [loadContext, newContent, newKey]);
 
   const logout = useCallback(async () => {
     const supabase = getSupabase();
@@ -221,13 +198,7 @@ export default function SettingsPage() {
         <header className="rounded-2xl border border-cyan-200/25 bg-[linear-gradient(130deg,rgba(7,17,31,0.96),rgba(10,27,50,0.92))] p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-200/80">
-                Agent Memory Control
-              </p>
               <h1 className="arcane-display-title mt-1 text-3xl text-zinc-50">Settings</h1>
-              <p className="mt-2 max-w-3xl text-sm text-zinc-300">
-                Review what the agent currently knows about you, edit memory entries, and continue interviewing to deepen context quality.
-              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Link
@@ -251,7 +222,7 @@ export default function SettingsPage() {
         <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
           <section className="rounded-2xl border border-white/10 bg-zinc-900/75 p-4">
             <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-semibold text-zinc-100">Current Agent Context Files</p>
+              <p className="text-sm font-semibold text-zinc-100">Agent Memory</p>
               <span className="text-xs text-zinc-400">{memories.length} entries</span>
             </div>
 
@@ -287,22 +258,11 @@ export default function SettingsPage() {
 
                           {isEditing ? (
                             <div className="space-y-2">
-                              <div className="grid gap-2 sm:grid-cols-[1fr_120px]">
-                                <Input
-                                  value={draftCategory}
-                                  onChange={(event) => setDraftCategory(event.target.value)}
-                                  className="h-9 border-white/10 bg-zinc-900 text-zinc-100"
-                                />
-                                <Input
-                                  value={draftImportance}
-                                  onChange={(event) => setDraftImportance(event.target.value)}
-                                  className="h-9 border-white/10 bg-zinc-900 text-zinc-100"
-                                />
-                              </div>
                               <Textarea
                                 value={draftContent}
                                 onChange={(event) => setDraftContent(event.target.value)}
                                 className="min-h-[100px] border-white/10 bg-zinc-900 text-zinc-100"
+                                placeholder="Content"
                               />
                               <Button
                                 type="button"
@@ -311,7 +271,7 @@ export default function SettingsPage() {
                                 className="h-8 rounded-lg bg-cyan-200/90 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-950 hover:bg-cyan-100 disabled:opacity-40"
                               >
                                 <Save className="mr-1 h-3.5 w-3.5" />
-                                Save Memory
+                                Save
                               </Button>
                             </div>
                           ) : (
@@ -336,27 +296,15 @@ export default function SettingsPage() {
               <p className="text-sm font-semibold text-zinc-100">Add Memory</p>
               <div className="mt-3 space-y-2">
                 <Input
-                  value={newCategory}
-                  onChange={(event) => setNewCategory(event.target.value)}
-                  placeholder="category"
-                  className="h-9 border-white/10 bg-zinc-900 text-zinc-100"
-                />
-                <Input
                   value={newKey}
                   onChange={(event) => setNewKey(event.target.value)}
-                  placeholder="key"
-                  className="h-9 border-white/10 bg-zinc-900 text-zinc-100"
-                />
-                <Input
-                  value={newImportance}
-                  onChange={(event) => setNewImportance(event.target.value)}
-                  placeholder="importance 0-100"
+                  placeholder="Memory Title (e.g. My favorite food...)"
                   className="h-9 border-white/10 bg-zinc-900 text-zinc-100"
                 />
                 <Textarea
                   value={newContent}
                   onChange={(event) => setNewContent(event.target.value)}
-                  placeholder="memory content"
+                  placeholder="Memory content"
                   className="min-h-[110px] border-white/10 bg-zinc-900 text-zinc-100"
                 />
                 <Button
@@ -368,37 +316,6 @@ export default function SettingsPage() {
                   <PlusCircle className="mr-1 h-4 w-4" />
                   Add Memory
                 </Button>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-white/10 bg-zinc-900/75 p-4">
-              <p className="text-sm font-semibold text-zinc-100">Interview Mode</p>
-              <p className="mt-2 text-sm text-zinc-300">
-                Continue the same onboarding interviewer to improve context depth and behavior modeling.
-              </p>
-              <Link
-                href="/onboarding?next=/settings"
-                className="mt-3 inline-flex h-9 items-center rounded-lg border border-cyan-200/40 px-3 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100 transition hover:border-cyan-100 hover:bg-cyan-500/10"
-              >
-                <WandSparkles className="mr-1 h-4 w-4" />
-                Continue Interview
-              </Link>
-            </section>
-
-            <section className="rounded-2xl border border-white/10 bg-zinc-900/75 p-4">
-              <p className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
-                <UserRoundSearch className="h-4 w-4 text-cyan-200" />
-                Profile Snapshot
-              </p>
-              <div className="mt-3 space-y-1.5 text-sm text-zinc-300">
-                <p>Name: {setup?.profile?.name || "Unknown"}</p>
-                <p>Occupation: {setup?.profile?.occupation || "Unknown"}</p>
-                <p>
-                  Default mode:{" "}
-                  {setup?.preferences?.simulationMode === "auto_future"
-                    ? "Time Into The Future"
-                    : "Predict Your Future Manually"}
-                </p>
               </div>
             </section>
           </aside>

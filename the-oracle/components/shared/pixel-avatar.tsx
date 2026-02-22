@@ -1,10 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import type { OnboardingAvatar } from "@/lib/types";
+import type { OnboardingAvatar, OnboardingAvatarAccessory } from "@/lib/types";
 
-type SpriteHeadTone = "porcelain" | "fair" | "beige" | "warm" | "tan" | "brown" | "deep";
-type SpriteHairStyle =
+export type SpriteHeadTone = "porcelain" | "fair" | "beige" | "warm" | "tan" | "brown" | "deep";
+export type SpriteHairStyle =
   | "short-umber"
   | "short-blonde"
   | "short-brown"
@@ -13,7 +13,7 @@ type SpriteHairStyle =
   | "ponytail-violet"
   | "ponytail-blonde"
   | "ponytail-platinum";
-type SpriteOutfitStyle =
+export type SpriteOutfitStyle =
   | "green-tunic"
   | "blue-vest"
   | "blue-guard"
@@ -22,20 +22,20 @@ type SpriteOutfitStyle =
   | "brown-leather"
   | "tan-traveler";
 
-type SpriteParts = {
+export type SpriteParts = {
   head: SpriteHeadTone;
   hair: SpriteHairStyle;
   outfit: SpriteOutfitStyle;
 };
 
-const DEFAULT_SPRITE_PARTS: SpriteParts = {
+export const DEFAULT_SPRITE_PARTS: SpriteParts = {
   head: "beige",
   hair: "short-brown",
   outfit: "blue-guard",
 };
 
-const HEAD_TONE_OPTIONS = ["porcelain", "fair", "beige", "warm", "tan", "brown", "deep"] as const;
-const HAIR_STYLE_OPTIONS = [
+export const HEAD_TONE_OPTIONS = ["porcelain", "fair", "beige", "warm", "tan", "brown", "deep"] as const;
+export const HAIR_STYLE_OPTIONS = [
   "short-umber",
   "short-blonde",
   "short-brown",
@@ -45,7 +45,7 @@ const HAIR_STYLE_OPTIONS = [
   "ponytail-blonde",
   "ponytail-platinum",
 ] as const;
-const OUTFIT_STYLE_OPTIONS = [
+export const OUTFIT_STYLE_OPTIONS = [
   "green-tunic",
   "blue-vest",
   "blue-guard",
@@ -65,7 +65,7 @@ function normalizeSpriteOption<T extends string>(
   return options.includes(value as T) ? (value as T) : fallback;
 }
 
-function parseSpriteParts(spriteId: string): SpriteParts {
+export function parseSpriteParts(spriteId: string): SpriteParts {
   const values = Object.fromEntries(
     spriteId
       .split("|")
@@ -91,6 +91,20 @@ function parseSpriteParts(spriteId: string): SpriteParts {
       DEFAULT_SPRITE_PARTS.outfit,
     ),
   };
+}
+
+export function buildSpriteId(parts: SpriteParts) {
+  return [
+    "v3",
+    `head:${parts.head}`,
+    `hair:${parts.hair}`,
+    `outfit:${parts.outfit}`,
+  ].join("|");
+}
+
+export function accessoryFromHairStyle(hair: SpriteHairStyle): OnboardingAvatarAccessory {
+  if (hair.startsWith("ponytail-")) return "headphones";
+  return "none";
 }
 
 const HAIR_LAYER_MAP: Record<SpriteHairStyle, { front: string; side: string }> = {
@@ -119,17 +133,21 @@ export function PixelAvatar({
 }) {
   const parts = parseSpriteParts(avatar.spriteId);
   const hairLayers = HAIR_LAYER_MAP[parts.hair] ?? HAIR_LAYER_MAP[DEFAULT_SPRITE_PARTS.hair];
-  const frameHeight = Math.round(size * 1.16);
-
   return (
-    <div className="relative" style={{ width: `${size}px`, height: `${frameHeight}px` }}>
+    <div
+      className="relative shrink-0"
+      style={{
+        width: `${size}px`,
+        height: `${Math.round(size * 1.16)}px`,
+      }}
+    >
       <div className="absolute left-[11%] top-[48%] h-[45%] w-[78%]">
         <Image
           src={spritePartSrc(`clothes/${parts.outfit}`)}
           alt=""
           fill
           unoptimized
-          style={{ imageRendering: "pixelated", objectFit: "contain" }}
+          style={{ imageRendering: "pixelated", objectFit: "fill" }}
         />
       </div>
       <div className="absolute left-[10%] top-[5%] h-[52%] w-[80%]">
@@ -138,7 +156,7 @@ export function PixelAvatar({
           alt=""
           fill
           unoptimized
-          style={{ imageRendering: "pixelated", objectFit: "contain" }}
+          style={{ imageRendering: "pixelated", objectFit: "fill" }}
         />
       </div>
       <div className="absolute left-[14%] top-[-1%] h-[42%] w-[72%]">
@@ -147,7 +165,7 @@ export function PixelAvatar({
           alt=""
           fill
           unoptimized
-          style={{ imageRendering: "pixelated", objectFit: "contain" }}
+          style={{ imageRendering: "pixelated", objectFit: "fill" }}
         />
       </div>
     </div>

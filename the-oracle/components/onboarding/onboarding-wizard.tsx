@@ -118,37 +118,21 @@ const RESUME_MIN_CHARS = 120;
 
 type OnboardingPath = "minimal" | "guided";
 
-type SpriteHeadTone =
-  | "porcelain"
-  | "fair"
-  | "beige"
-  | "warm"
-  | "tan"
-  | "brown"
-  | "deep";
-type SpriteHairStyle =
-  | "short-umber"
-  | "short-blonde"
-  | "short-brown"
-  | "short-charcoal"
-  | "short-black"
-  | "ponytail-violet"
-  | "ponytail-blonde"
-  | "ponytail-platinum";
-type SpriteOutfitStyle =
-  | "green-tunic"
-  | "blue-vest"
-  | "blue-guard"
-  | "red-vest"
-  | "violet-vest"
-  | "brown-leather"
-  | "tan-traveler";
-
-type SpriteParts = {
-  head: SpriteHeadTone;
-  hair: SpriteHairStyle;
-  outfit: SpriteOutfitStyle;
-};
+import {
+  PixelAvatar,
+  SpriteHeadTone,
+  SpriteHairStyle,
+  SpriteOutfitStyle,
+  SpriteParts,
+  DEFAULT_SPRITE_PARTS,
+  HEAD_TONE_OPTIONS,
+  HAIR_STYLE_OPTIONS,
+  OUTFIT_STYLE_OPTIONS,
+  buildSpriteId,
+  parseSpriteParts,
+  accessoryFromHairStyle,
+} from "@/components/shared/pixel-avatar";
+import { AvatarCustomizer } from "@/components/shared/avatar-customizer";
 
 type AvatarTab = "hair" | "clothes" | "head";
 
@@ -180,48 +164,7 @@ const SIMULATION_MODE_DETAILS: Record<
   },
 };
 
-const AVATAR_TABS: Array<{
-  id: AvatarTab;
-  label: string;
-}> = [
-    { id: "hair", label: "Hair" },
-    { id: "clothes", label: "Clothes" },
-    { id: "head", label: "Skin" },
-  ];
-
-const HEAD_TONE_OPTIONS: Array<{ id: SpriteHeadTone; label: string }> = [
-  { id: "beige", label: "Beige" },
-  { id: "tan", label: "Tan" },
-  { id: "brown", label: "Brown" },
-  { id: "deep", label: "Deep" },
-];
-
-const HAIR_STYLE_OPTIONS: Array<{ id: SpriteHairStyle; label: string }> = [
-  { id: "short-umber", label: "Umber" },
-  { id: "short-blonde", label: "Blonde" },
-  { id: "short-brown", label: "Brown" },
-  { id: "short-charcoal", label: "Charcoal" },
-  { id: "short-black", label: "Black" },
-  { id: "ponytail-violet", label: "Violet" },
-  { id: "ponytail-blonde", label: "Blonde" },
-  { id: "ponytail-platinum", label: "Platinum" },
-];
-
-const OUTFIT_STYLE_OPTIONS: Array<{ id: SpriteOutfitStyle; label: string }> = [
-  { id: "green-tunic", label: "Green" },
-  { id: "blue-vest", label: "Blue" },
-  { id: "blue-guard", label: "Dark Blue" },
-  { id: "red-vest", label: "Red" },
-  { id: "violet-vest", label: "Violet" },
-  { id: "brown-leather", label: "Brown" },
-  { id: "tan-traveler", label: "Tan" },
-];
-
-const DEFAULT_SPRITE_PARTS: SpriteParts = {
-  head: "beige",
-  hair: "short-brown",
-  outfit: "blue-guard",
-};
+// Sprite constants imported from pixel-avatar
 
 type ResumeMeta = {
   parser: string;
@@ -247,6 +190,7 @@ type InterviewApiResponse = {
 
 type ResumeUploadResponse = {
   text: string;
+  profile?: OnboardingLinkedinProfile;
   meta: ResumeMeta;
 };
 
@@ -635,233 +579,7 @@ function isInterviewMessageDomainId(
   );
 }
 
-type PixelSpriteVariant = "front" | "side";
-
-function normalizeSpriteOption<T extends string>(
-  options: Array<{ id: T }>,
-  value: string | undefined,
-  fallback: T,
-) {
-  return options.some((option) => option.id === value) ? (value as T) : fallback;
-}
-
-function accessoryFromHairStyle(hair: SpriteHairStyle): OnboardingAvatar["accessory"] {
-  if (hair.startsWith("ponytail-")) return "headphones";
-  return "none";
-}
-
-function parseSpriteParts(spriteId: string): SpriteParts {
-  const raw = String(spriteId || "").trim();
-  const values: Record<string, string> = {};
-  for (const segment of raw.split("|").slice(1)) {
-    const [key, ...rest] = segment.split(":");
-    if (!key || rest.length === 0) continue;
-    values[key] = rest.join(":");
-  }
-
-  if (raw.startsWith("v3|")) {
-    return {
-      head: normalizeSpriteOption(HEAD_TONE_OPTIONS, values.head, DEFAULT_SPRITE_PARTS.head),
-      hair: normalizeSpriteOption(HAIR_STYLE_OPTIONS, values.hair, DEFAULT_SPRITE_PARTS.hair),
-      outfit: normalizeSpriteOption(
-        OUTFIT_STYLE_OPTIONS,
-        values.outfit,
-        DEFAULT_SPRITE_PARTS.outfit,
-      ),
-    };
-  }
-
-  if (!raw.startsWith("v2|")) {
-    const [legacyBase, legacyHead] = raw.split(":");
-    const legacyHeadMap: Record<string, SpriteHeadTone> = {
-      head_round: "beige",
-      head_square: "tan",
-      head_blob: "beige",
-      head_flat: "brown",
-    };
-    return {
-      ...DEFAULT_SPRITE_PARTS,
-      head: legacyHeadMap[legacyHead] ?? DEFAULT_SPRITE_PARTS.head,
-      hair: legacyBase === "base_tall" ? "ponytail-platinum" : DEFAULT_SPRITE_PARTS.hair,
-    };
-  }
-
-  const legacyHeadMap: Record<string, SpriteHeadTone> = {
-    round: "beige",
-    "soft-square": "tan",
-    oval: "tan",
-    angular: "brown",
-    blob: "beige",
-  };
-  const legacyHairMap: Record<string, SpriteHairStyle> = {
-    buzz: "short-charcoal",
-    short: "short-umber",
-    "side-part": "short-brown",
-    swept: "short-charcoal",
-    pixie: "short-blonde",
-    bob: "ponytail-blonde",
-    wavy: "short-blonde",
-    curly: "short-black",
-    ponytail: "ponytail-violet",
-    "twin-buns": "ponytail-platinum",
-    "long-straight": "ponytail-blonde",
-    braid: "ponytail-platinum",
-    mohawk: "short-black",
-    spiky: "short-charcoal",
-    afro: "short-black",
-    dreads: "short-brown",
-  };
-  const legacyOutfitMap: Record<string, SpriteOutfitStyle> = {
-    tee: "green-tunic",
-    hoodie: "blue-guard",
-    jacket: "brown-leather",
-    vest: "blue-vest",
-    armor: "red-vest",
-    kimono: "violet-vest",
-    coat: "tan-traveler",
-    sweater: "blue-guard",
-  };
-
-  return {
-    head: normalizeSpriteOption(
-      HEAD_TONE_OPTIONS,
-      legacyHeadMap[values.head ?? ""] ?? values.head,
-      DEFAULT_SPRITE_PARTS.head,
-    ),
-    hair: normalizeSpriteOption(
-      HAIR_STYLE_OPTIONS,
-      legacyHairMap[values.hair ?? ""] ?? values.hair,
-      DEFAULT_SPRITE_PARTS.hair,
-    ),
-    outfit: normalizeSpriteOption(
-      OUTFIT_STYLE_OPTIONS,
-      legacyOutfitMap[values.top ?? ""] ?? values.outfit,
-      DEFAULT_SPRITE_PARTS.outfit,
-    ),
-  };
-}
-
-function buildSpriteId(parts: SpriteParts) {
-  return [
-    "v3",
-    `head:${parts.head}`,
-    `hair:${parts.hair}`,
-    `outfit:${parts.outfit}`,
-  ].join("|");
-}
-
-type SpriteLayerChoice = {
-  hairFront: string;
-  hairSide: string;
-  head: string;
-  outfit: string;
-};
-
-const HAIR_LAYER_MAP: Record<
-  SpriteHairStyle,
-  {
-    front: string;
-    side: string;
-  }
-> = {
-  "short-umber": { front: "short-umber", side: "short-umber" },
-  "short-blonde": { front: "short-blonde", side: "short-blonde" },
-  "short-brown": { front: "short-brown", side: "short-brown" },
-  "short-charcoal": { front: "short-charcoal", side: "short-charcoal" },
-  "short-black": { front: "short-black", side: "short-black" },
-  "ponytail-violet": { front: "ponytail-violet", side: "ponytail-violet" },
-  "ponytail-blonde": { front: "ponytail-blonde", side: "ponytail-blonde" },
-  "ponytail-platinum": { front: "ponytail-platinum", side: "ponytail-platinum" },
-};
-
-const HEAD_LAYER_MAP: Record<SpriteHeadTone, string> = {
-  porcelain: "porcelain",
-  fair: "fair",
-  beige: "beige",
-  warm: "warm",
-  tan: "tan",
-  brown: "brown",
-  deep: "deep",
-};
-
-const OUTFIT_LAYER_MAP: Record<SpriteOutfitStyle, string> = {
-  "green-tunic": "green-tunic",
-  "blue-vest": "blue-vest",
-  "blue-guard": "blue-guard",
-  "red-vest": "red-vest",
-  "violet-vest": "violet-vest",
-  "brown-leather": "brown-leather",
-  "tan-traveler": "tan-traveler",
-};
-
-function resolveLayerChoice(parts: SpriteParts): SpriteLayerChoice {
-  const hairLayers = HAIR_LAYER_MAP[parts.hair] ?? HAIR_LAYER_MAP[DEFAULT_SPRITE_PARTS.hair];
-  return {
-    hairFront: hairLayers.front,
-    hairSide: hairLayers.side,
-    head: HEAD_LAYER_MAP[parts.head] ?? HEAD_LAYER_MAP[DEFAULT_SPRITE_PARTS.head],
-    outfit: OUTFIT_LAYER_MAP[parts.outfit] ?? OUTFIT_LAYER_MAP[DEFAULT_SPRITE_PARTS.outfit],
-  };
-}
-
-function spritePartSrc(path: string) {
-  return `/sprite-parts/${path}.png`;
-}
-
-function PixelSprite({
-  avatar,
-  variant = "front",
-  size = 180,
-}: {
-  avatar: OnboardingAvatar;
-  variant?: PixelSpriteVariant;
-  size?: number;
-}) {
-  const parts = parseSpriteParts(avatar.spriteId);
-  const layers = resolveLayerChoice(parts);
-  const frameHeight = Math.round(size * 1.16);
-  const outfitSrc = spritePartSrc(`clothes/${layers.outfit}`);
-
-  return (
-    <div
-      role="img"
-      aria-label="Selected onboarding sprite"
-      className="relative"
-      style={{ width: `${size}px`, height: `${frameHeight}px` }}
-    >
-      <div className="absolute left-[11%] top-[48%] h-[45%] w-[78%]">
-        <Image
-          src={outfitSrc}
-          alt=""
-          fill
-          unoptimized
-          style={{ imageRendering: "pixelated", objectFit: "contain" }}
-        />
-      </div>
-      <div className="absolute left-[10%] top-[5%] h-[52%] w-[80%]">
-        <Image
-          src={spritePartSrc(`head/${layers.head}`)}
-          alt=""
-          fill
-          unoptimized
-          style={{ imageRendering: "pixelated", objectFit: "contain" }}
-        />
-      </div>
-      <div className="absolute left-[14%] top-[-1%] h-[42%] w-[72%]">
-        <Image
-          src={spritePartSrc(
-            `hair/${variant === "side" ? "side" : "front"}/${variant === "side" ? layers.hairSide : layers.hairFront
-            }`,
-          )}
-          alt=""
-          fill
-          unoptimized
-          style={{ imageRendering: "pixelated", objectFit: "contain" }}
-        />
-      </div>
-    </div>
-  );
-}
+// Redundant sprite functions and types removed
 
 export function OnboardingWizard() {
   const router = useRouter();
@@ -1543,6 +1261,9 @@ export function OnboardingWizard() {
       });
       setResumeText(result.text);
       setResumeMeta(result.meta);
+      if (result.profile) {
+        setLinkedinProfile(result.profile);
+      }
     } catch (err: any) {
       setError(err?.message ?? "Could not parse resume.");
     } finally {
@@ -1681,39 +1402,9 @@ export function OnboardingWizard() {
     [avatar.spriteId],
   );
 
-  function updateSpriteParts(patch: Partial<SpriteParts>) {
-    setAvatar((previous) => {
-      const nextParts = {
-        ...parseSpriteParts(previous.spriteId),
-        ...patch,
-      };
-      return {
-        ...previous,
-        spriteId: buildSpriteId(nextParts),
-        accessory: accessoryFromHairStyle(nextParts.hair),
-        expression: "calm",
-      };
-    });
-  }
+  // Redundant local sprite state helpers removed
 
-  function resetSprite() {
-    setAvatar({
-      spriteId: buildSpriteId(DEFAULT_SPRITE_PARTS),
-      paletteId: "plum",
-      accessory: accessoryFromHairStyle(DEFAULT_SPRITE_PARTS.hair),
-      expression: "calm",
-    });
-    setAvatarTab("hair");
-  }
-
-  const spriteTileClass =
-    "arcane-sprite-tile group";
-  const spriteTileSelectedClass =
-    "arcane-sprite-tile arcane-sprite-tile-active group";
-  const spriteTabClass =
-    "arcane-sprite-tab";
-  const spriteTabActiveClass =
-    "arcane-sprite-tab arcane-sprite-tab-active";
+  // Unused sprite tab classes removed
   const onboardingStepPanelClass =
     "arcane-panel arcane-panel-outline-fat rounded-2xl p-5 sm:p-6";
   const onboardingContentMaxWidthClass =
@@ -1815,133 +1506,12 @@ export function OnboardingWizard() {
           >
             {stepId === "avatar" ? (
               <div className={onboardingStepPanelClass}>
-                <div className="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] md:gap-7">
-                  <div className="space-y-4 md:sticky md:top-6">
-                    <div className="arcane-frame rounded-2xl p-4">
-                      <p className="arcane-kicker">Portrait Preview</p>
-                      <div className="mt-2.5 flex min-h-[172px] items-center justify-center">
-                        <PixelSprite avatar={avatar} variant="front" size={136} />
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={resetSprite}
-                      className="arcane-button-secondary inline-flex h-9 items-center justify-center rounded-full px-4 text-[11px] uppercase tracking-[0.16em]"
-                      aria-label="Reset avatar"
-                    >
-                      <Sparkles className="h-3 w-3" />
-                      Reset
-                    </button>
-                  </div>
-
-                  <div className="pt-1">
-                    <p className="arcane-kicker inline-flex items-center gap-1.5">
-                      <Sparkles className="h-3 w-3 text-amber-300/90" />
-                      Customize Your Wizard
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {AVATAR_TABS.map((tab) => (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          onClick={() => setAvatarTab(tab.id)}
-                          aria-pressed={avatarTab === tab.id}
-                          className={avatarTab === tab.id ? spriteTabActiveClass : spriteTabClass}
-                        >
-                          {tab.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {avatarTab === "hair" ? (
-                      <div className="mt-4">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Style</p>
-                        <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                          {HAIR_STYLE_OPTIONS.map((option) => {
-                            const nextParts = { ...spriteParts, hair: option.id };
-                            const candidate = {
-                              ...avatar,
-                              spriteId: buildSpriteId(nextParts),
-                              accessory: accessoryFromHairStyle(option.id),
-                            };
-                            const selected = spriteParts.hair === option.id;
-                            return (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() => updateSpriteParts({ hair: option.id })}
-                                aria-pressed={selected}
-                                className={selected ? spriteTileSelectedClass : spriteTileClass}
-                              >
-                                <div className="flex items-center justify-center">
-                                  <PixelSprite avatar={candidate} size={52} />
-                                </div>
-                                <span className="arcane-sprite-label mt-1 block text-[11px]">{option.label}</span>
-                                {selected ? <span className="arcane-selected-chip">Selected</span> : null}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {avatarTab === "clothes" ? (
-                      <div className="mt-4">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Color</p>
-                        <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                          {OUTFIT_STYLE_OPTIONS.map((option) => {
-                            const nextParts = { ...spriteParts, outfit: option.id };
-                            const candidate = { ...avatar, spriteId: buildSpriteId(nextParts) };
-                            const selected = spriteParts.outfit === option.id;
-                            return (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() => updateSpriteParts({ outfit: option.id })}
-                                aria-pressed={selected}
-                                className={selected ? spriteTileSelectedClass : spriteTileClass}
-                              >
-                                <div className="flex items-center justify-center">
-                                  <PixelSprite avatar={candidate} size={52} />
-                                </div>
-                                <span className="arcane-sprite-label mt-1 block text-[11px]">{option.label}</span>
-                                {selected ? <span className="arcane-selected-chip">Selected</span> : null}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {avatarTab === "head" ? (
-                      <div className="mt-4">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">Skin Tone</p>
-                        <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                          {HEAD_TONE_OPTIONS.map((option) => {
-                            const nextParts = { ...spriteParts, head: option.id };
-                            const candidate = { ...avatar, spriteId: buildSpriteId(nextParts) };
-                            const selected = spriteParts.head === option.id;
-                            return (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() => updateSpriteParts({ head: option.id })}
-                                aria-pressed={selected}
-                                className={selected ? spriteTileSelectedClass : spriteTileClass}
-                              >
-                                <div className="flex items-center justify-center">
-                                  <PixelSprite avatar={candidate} size={52} />
-                                </div>
-                                <span className="arcane-sprite-label mt-1 block text-[11px]">{option.label}</span>
-                                {selected ? <span className="arcane-selected-chip">Selected</span> : null}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
+                <AvatarCustomizer
+                  avatar={avatar}
+                  onChange={(nextAvatar) => {
+                    setAvatar(nextAvatar);
+                  }}
+                />
               </div>
             ) : null}
 
@@ -1952,8 +1522,8 @@ export function OnboardingWizard() {
                     type="button"
                     onClick={() => chooseOnboardingPath("minimal")}
                     className={`arcane-panel onboarding-path-card group relative flex min-h-[18rem] flex-col overflow-hidden rounded-3xl border p-6 text-left transition-all duration-200 md:min-h-[20rem] md:p-7 ${onboardingPath === "minimal"
-                        ? "arcane-panel-outline-fat scale-[1.01] border-amber-200/70 bg-[linear-gradient(180deg,rgba(40,34,18,0.95),rgba(14,16,24,0.97))] shadow-[0_0_0_2px_rgba(245,208,124,0.55),0_0_34px_rgba(245,208,124,0.26),0_18px_36px_rgba(0,0,0,0.45)]"
-                        : "arcane-panel-outline-thin border-white/10 bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.8] saturate-75 hover:border-zinc-300/40 hover:opacity-100 hover:saturate-100"
+                      ? "arcane-panel-outline-fat scale-[1.01] border-amber-200/70 bg-[linear-gradient(180deg,rgba(40,34,18,0.95),rgba(14,16,24,0.97))] shadow-[0_0_0_2px_rgba(245,208,124,0.55),0_0_34px_rgba(245,208,124,0.26),0_18px_36px_rgba(0,0,0,0.45)]"
+                      : "arcane-panel-outline-thin border-white/10 bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.8] saturate-75 hover:border-zinc-300/40 hover:opacity-100 hover:saturate-100"
                       }`}
                     aria-pressed={onboardingPath === "minimal"}
                   >
@@ -2000,8 +1570,8 @@ export function OnboardingWizard() {
                     type="button"
                     onClick={() => chooseOnboardingPath("guided")}
                     className={`arcane-panel onboarding-path-card group relative flex min-h-[18rem] flex-col overflow-hidden rounded-3xl border p-6 text-left transition-all duration-200 md:min-h-[20rem] md:p-7 ${onboardingPath === "guided"
-                        ? "arcane-panel-outline-fat scale-[1.01] border-amber-200/70 bg-[linear-gradient(180deg,rgba(40,34,18,0.95),rgba(14,16,24,0.97))] shadow-[0_0_0_2px_rgba(245,208,124,0.55),0_0_34px_rgba(245,208,124,0.26),0_18px_36px_rgba(0,0,0,0.45)]"
-                        : "arcane-panel-outline-thin border-white/10 bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.8] saturate-75 hover:border-zinc-300/40 hover:opacity-100 hover:saturate-100"
+                      ? "arcane-panel-outline-fat scale-[1.01] border-amber-200/70 bg-[linear-gradient(180deg,rgba(40,34,18,0.95),rgba(14,16,24,0.97))] shadow-[0_0_0_2px_rgba(245,208,124,0.55),0_0_34px_rgba(245,208,124,0.26),0_18px_36px_rgba(0,0,0,0.45)]"
+                      : "arcane-panel-outline-thin border-white/10 bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.8] saturate-75 hover:border-zinc-300/40 hover:opacity-100 hover:saturate-100"
                       }`}
                     aria-pressed={onboardingPath === "guided"}
                   >
@@ -2267,8 +1837,8 @@ export function OnboardingWizard() {
                                   <p
                                     ref={isLatestAssistant ? latestAssistantBubbleRef : null}
                                     className={`${storyBubbleAssistantClass} ${summonZapActive && isLatestAssistant
-                                        ? "interview-summoned-question"
-                                        : ""
+                                      ? "interview-summoned-question"
+                                      : ""
                                       }`}
                                   >
                                     {message.content}
@@ -2281,7 +1851,7 @@ export function OnboardingWizard() {
                                 >
                                   <div className={storyBubbleUserClass}>{message.content}</div>
                                   <div className="mb-0.5 shrink-0 self-end rounded-full border border-zinc-500/60 bg-zinc-800 p-0.5">
-                                    <PixelSprite avatar={avatar} size={26} />
+                                    <PixelAvatar avatar={avatar} size={26} />
                                   </div>
                                 </div>
                               );
@@ -2369,8 +1939,8 @@ export function OnboardingWizard() {
                           type="button"
                           onClick={() => selectSimulationMode(option.id)}
                           className={`arcane-panel onboarding-path-card group relative flex min-h-[19rem] flex-col overflow-hidden rounded-3xl border p-6 text-left transition-all duration-200 md:min-h-[21rem] md:p-7 ${selected
-                              ? "arcane-panel-outline-fat scale-[1.01] border-amber-200/70 bg-[linear-gradient(180deg,rgba(40,34,18,0.95),rgba(14,16,24,0.97))] shadow-[0_0_0_2px_rgba(245,208,124,0.55),0_0_34px_rgba(245,208,124,0.26),0_18px_36px_rgba(0,0,0,0.45)]"
-                              : "arcane-panel-outline-thin border-white/10 bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.8] saturate-75 hover:border-zinc-300/40 hover:opacity-100 hover:saturate-100"
+                            ? "arcane-panel-outline-fat scale-[1.01] border-amber-200/70 bg-[linear-gradient(180deg,rgba(40,34,18,0.95),rgba(14,16,24,0.97))] shadow-[0_0_0_2px_rgba(245,208,124,0.55),0_0_34px_rgba(245,208,124,0.26),0_18px_36px_rgba(0,0,0,0.45)]"
+                            : "arcane-panel-outline-thin border-white/10 bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.8] saturate-75 hover:border-zinc-300/40 hover:opacity-100 hover:saturate-100"
                             }`}
                           aria-pressed={selected}
                         >

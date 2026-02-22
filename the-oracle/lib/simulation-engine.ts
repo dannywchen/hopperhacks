@@ -19,15 +19,15 @@ const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models
 const GEMINI_MODEL = "gemini-3-flash-preview";
 
 const metricKeys: Array<keyof SimulationMetrics> = [
-  "health",
-  "money",
-  "career",
-  "relationships",
-  "fulfillment",
-  "stress",
-  "freeTime",
+  "projectedDeathDate",
   "netWorth",
   "salary",
+  "relationships",
+  "freeTime",
+  "career",
+  "health",
+  "stress",
+  "fulfillment",
   "monthlyExpenses",
   "confidence",
 ];
@@ -37,17 +37,17 @@ const simulationModeSchema = z.enum(["auto_future", "manual_step"]);
 const horizonPresetSchema = z.enum(["whole_life", "10_years", "1_year", "1_week"]);
 
 const simulationMetricsSchema: z.ZodType<SimulationMetrics> = z.object({
-  health: z.number(),
-  money: z.number(),
-  career: z.number(),
-  relationships: z.number(),
-  fulfillment: z.number(),
-  stress: z.number(),
-  freeTime: z.number(),
-  netWorth: z.number(),
-  salary: z.number(),
-  monthlyExpenses: z.number(),
-  confidence: z.number(),
+  health: z.number().catch(50),
+  career: z.number().catch(50),
+  relationships: z.number().catch(20),
+  fulfillment: z.number().catch(50),
+  stress: z.number().catch(50),
+  freeTime: z.number().catch(28),
+  netWorth: z.number().catch(15000),
+  salary: z.number().catch(60000),
+  monthlyExpenses: z.number().catch(3000),
+  confidence: z.number().catch(50),
+  projectedDeathDate: z.number().catch(() => new Date(new Date().getFullYear() + 60, 5, 15).getTime()),
 });
 
 const simulationActionOptionSchema: z.ZodType<SimulationActionOption> = z.object({
@@ -275,24 +275,31 @@ export function buildDefaultMetricsFromSetup(setup: UserSetup | null): Simulatio
   const health = factorValue(setup, "health", 55);
   const money = factorValue(setup, "money", 50);
   const career = factorValue(setup, "career", 50);
-  const relationships = factorValue(setup, "relationships", 52);
   const fulfillment = factorValue(setup, "fulfillment", 51);
   const netWorthRaw = setup?.factors?.find((item) => item.id === "netWorthTotal")?.baseline?.value;
   const netWorth = clampMetricValue("netWorth", typeof netWorthRaw === "number" ? netWorthRaw : 15_000);
   const salary = clampMetricValue("salary", Math.max(28_000, Math.round(26_000 + money * 1_150)));
   const monthlyExpenses = clampMetricValue("monthlyExpenses", Math.round((salary * 0.58) / 12));
+
+  const age = setup?.profile?.age ?? 25;
+  const currentYear = new Date().getFullYear();
+  const birthYear = currentYear - age;
+  // Assume an average lifespan of 82 years right now
+  const projectedDeathYear = birthYear + 82;
+  const projectedDeathDate = new Date(projectedDeathYear, 5, 15).getTime(); // roughly mid-year
+
   return {
     health,
-    money,
     career,
-    relationships,
+    relationships: 14, // 14 hours / week
     fulfillment,
     stress: clampMetricValue("stress", 62 - health * 0.22),
-    freeTime: clampMetricValue("freeTime", 42 + (100 - money) * 0.08),
+    freeTime: 28, // 28 hours / week
     netWorth,
     salary,
     monthlyExpenses,
     confidence: clampMetricValue("confidence", 40 + (setup?.onboarding?.reflections?.length ?? 0) * 5),
+    projectedDeathDate,
   };
 }
 
@@ -555,7 +562,7 @@ function fallbackManualOptionDrafts(metrics: SimulationMetrics): ManualOptionDra
       description: "Invest in one key relationship and remove unresolved tension.",
     },
   ];
-  if (metrics.money < 45) {
+  if (metrics.netWorth < 10000 && metrics.salary < 50000) {
     options[0] = {
       id: crypto.randomUUID(),
       title: "Run a financial reset",
@@ -1086,7 +1093,7 @@ export async function endSimulation(params: {
   const last = nodes[nodes.length - 1]?.metricsSnapshot ?? run.latestMetrics;
   const gains = [
     { key: "career", delta: last.career - first.career },
-    { key: "money", delta: last.money - first.money },
+    { key: "netWorth", delta: last.netWorth - first.netWorth },
     { key: "health", delta: last.health - first.health },
     { key: "relationships", delta: last.relationships - first.relationships },
     { key: "fulfillment", delta: last.fulfillment - first.fulfillment },
@@ -1107,7 +1114,6 @@ export async function endSimulation(params: {
         label: node.actionLabel,
         story: node.story,
       })),
-    moneyChart: histogramFromNodes(nodes, "money"),
     careerChart: histogramFromNodes(nodes, "career"),
     healthChart: histogramFromNodes(nodes, "health"),
     netWorthChart: histogramFromNodes(nodes, "netWorth"),

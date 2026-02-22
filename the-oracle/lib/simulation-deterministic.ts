@@ -11,15 +11,15 @@ import type { SimulationMetrics } from "@/lib/types";
  * This module intentionally contains zero LLM-derived numeric changes.
  */
 export const simulationMetricKeys: Array<keyof SimulationMetrics> = [
-  "health",
-  "money",
-  "career",
-  "relationships",
-  "fulfillment",
-  "stress",
-  "freeTime",
+  "projectedDeathDate",
   "netWorth",
   "salary",
+  "relationships",
+  "freeTime",
+  "career",
+  "health",
+  "stress",
+  "fulfillment",
   "monthlyExpenses",
   "confidence",
 ];
@@ -283,6 +283,8 @@ function clampMetricValue(key: keyof SimulationMetrics, value: number): number {
   if (key === "netWorth") return clamp(Math.round(value), -500_000_000, 5_000_000_000);
   if (key === "salary") return clamp(Math.round(value), 0, 2_000_000);
   if (key === "monthlyExpenses") return clamp(Math.round(value), 0, 1_000_000);
+  if (key === "projectedDeathDate") return value;
+  if (key === "relationships" || key === "freeTime") return clamp(Number(value.toFixed(1)), 0, 168);
   return clamp(Number(value.toFixed(2)), 0, 100);
 }
 
@@ -292,16 +294,34 @@ function toScore(value: number): number {
 
 function summarizeDeltaLines(deltas: Partial<SimulationMetrics>): string[] {
   const lines: string[] = [];
+  const keyLabels: Partial<Record<keyof SimulationMetrics, string>> = {
+    projectedDeathDate: "Proj. Death",
+    netWorth: "Net Worth",
+    monthlyExpenses: "Expenses",
+    freeTime: "Free Time"
+  };
+
   for (const key of simulationMetricKeys) {
     const value = deltas[key];
     if (typeof value !== "number") continue;
-    if ((key === "salary" || key === "netWorth" || key === "monthlyExpenses") && Math.abs(value) < 40) continue;
-    if (key !== "salary" && key !== "netWorth" && key !== "monthlyExpenses" && Math.abs(value) < 0.25) continue;
+
+    const label = keyLabels[key] || key.charAt(0).toUpperCase() + key.slice(1);
+
+    if (key === "projectedDeathDate") {
+      const daysDelta = Math.round(value / (1000 * 60 * 60 * 24));
+      if (Math.abs(daysDelta) < 1) continue;
+      const sign = daysDelta > 0 ? "+" : "";
+      lines.push(`${label}: ${sign}${daysDelta} days`);
+      continue;
+    }
+
+    if ((key === "salary" || key === "netWorth" || key === "monthlyExpenses") && Math.abs(value) < 1) continue;
+    if (key !== "salary" && key !== "netWorth" && key !== "monthlyExpenses" && Math.abs(value) < 0.05) continue;
     const sign = value > 0 ? "+" : "";
     if (key === "salary" || key === "netWorth" || key === "monthlyExpenses") {
-      lines.push(`${key}: ${sign}$${Math.round(value).toLocaleString()}`);
+      lines.push(`${label}: ${sign}$${Math.round(value).toLocaleString()}`);
     } else {
-      lines.push(`${key}: ${sign}${value.toFixed(1)}`);
+      lines.push(`${label}: ${sign}${value.toFixed(1)}`);
     }
   }
   return lines.slice(0, 6);
@@ -313,14 +333,14 @@ function buildImpactHint(deltas: Partial<SimulationMetrics>): string {
     label: string;
     value: number;
   }> = [
-    { key: "career", label: "career", value: deltas.career ?? 0 },
-    { key: "money", label: "money", value: deltas.money ?? 0 },
-    { key: "health", label: "health", value: deltas.health ?? 0 },
-    { key: "relationships", label: "relationships", value: deltas.relationships ?? 0 },
-    { key: "fulfillment", label: "fulfillment", value: deltas.fulfillment ?? 0 },
-    { key: "stress", label: "stress", value: -(deltas.stress ?? 0) },
-    { key: "freeTime", label: "free time", value: deltas.freeTime ?? 0 },
-  ];
+      { key: "career", label: "career", value: deltas.career ?? 0 },
+      { key: "netWorth", label: "net worth", value: deltas.netWorth ? (deltas.netWorth > 0 ? 0.3 : -0.3) : 0 },
+      { key: "health", label: "health", value: deltas.health ?? 0 },
+      { key: "relationships", label: "relationships", value: deltas.relationships ?? 0 },
+      { key: "fulfillment", label: "fulfillment", value: deltas.fulfillment ?? 0 },
+      { key: "stress", label: "stress", value: -(deltas.stress ?? 0) },
+      { key: "freeTime", label: "free time", value: deltas.freeTime ?? 0 },
+    ];
   tracked.sort((a, b) => b.value - a.value);
   const best = tracked[0];
   const worst = tracked[tracked.length - 1];
@@ -337,10 +357,9 @@ function computeDailyMetrics(
   features: ActionFeatureVector,
 ): SimulationMetrics {
   const healthScore = toScore(current.health);
-  const moneyScore = toScore(current.money);
   const careerScore = toScore(current.career);
-  const relationshipScore = toScore(current.relationships);
-  const freeTimeScore = toScore(current.freeTime);
+  const relationshipScore = clamp01(current.relationships / 30);
+  const freeTimeScore = clamp01(current.freeTime / 50);
   const confidenceScore = toScore(current.confidence);
 
   const recoveryFocus = clamp01(
@@ -351,25 +370,25 @@ function computeDailyMetrics(
   );
   const workload = clamp01(
     0.30
-      + 0.55 * features.work
-      + 0.24 * features.learning
-      + 0.15 * features.risk
-      - 0.22 * recoveryFocus
-      - 0.12 * features.discipline,
+    + 0.55 * features.work
+    + 0.24 * features.learning
+    + 0.15 * features.risk
+    - 0.22 * recoveryFocus
+    - 0.12 * features.discipline,
   );
   const socialInvestment = clamp01(
     0.20
-      + 0.60 * features.relationships
-      + 0.22 * features.social
-      + 0.14 * features.leisure
-      - 0.22 * features.work,
+    + 0.60 * features.relationships
+    + 0.22 * features.social
+    + 0.14 * features.leisure
+    - 0.22 * features.work,
   );
 
   const taxRate = effectiveTaxRate(current.salary);
   const afterTaxMonthly = (current.salary * (1 - taxRate)) / 12;
   const baselineExpenseBurden = clamp01(current.monthlyExpenses / Math.max(500, afterTaxMonthly));
   const debtPressure = clamp01((-current.netWorth) / 140_000);
-  const financialStrain = clamp01(0.58 * baselineExpenseBurden + 0.22 * (1 - moneyScore) + 0.20 * debtPressure);
+  const financialStrain = clamp01(0.58 * baselineExpenseBurden + 0.20 * debtPressure);
   const socialConflict = clamp01(0.50 + 0.40 * workload - 0.48 * socialInvestment + 0.12 * features.risk);
 
   const stressTarget = clamp(
@@ -382,12 +401,12 @@ function computeDailyMetrics(
 
   const workHours = clamp(
     38
-      + 22 * features.work
-      + 10 * features.learning
-      - 12 * features.leisure
-      - 8 * features.relationships
-      + 6 * features.risk
-      - 5 * features.discipline,
+    + 22 * features.work
+    + 10 * features.learning
+    - 12 * features.leisure
+    - 8 * features.relationships
+    + 6 * features.risk
+    - 5 * features.discipline,
     20,
     75,
   );
@@ -395,38 +414,34 @@ function computeDailyMetrics(
   const healthHours = clamp(5 + 11 * features.health + 4 * features.discipline - 3 * features.work, 2, 18);
   const maintenanceHours = 63;
   const discretionaryHours = clamp(168 - maintenanceHours - workHours - socialHours - healthHours, 0, 56);
-  const freeTimeTarget = clamp((discretionaryHours / 56) * 100, 0, 100);
+  const freeTimeTarget = discretionaryHours;
   const freeTime = clampMetricValue("freeTime", current.freeTime + 0.23 * (freeTimeTarget - current.freeTime));
-  const freeTimeNorm = toScore(freeTime);
+  const freeTimeNorm = clamp01(freeTime / 50);
 
   const burnoutRisk = clamp01(
     0.42 * stressNorm
-      + 0.28 * (1 - healthScore)
-      + 0.18 * workload
-      + 0.12 * (1 - freeTimeNorm)
-      - 0.20 * recoveryFocus,
+    + 0.28 * (1 - healthScore)
+    + 0.18 * workload
+    + 0.12 * (1 - freeTimeNorm)
+    - 0.20 * recoveryFocus,
   );
   const healthTarget = clamp(
     46
-      + 30 * recoveryFocus
-      + 12 * features.health
-      + 6 * features.discipline
-      - 22 * stressNorm
-      - 12 * burnoutRisk
-      - 8 * financialStrain,
+    + 30 * recoveryFocus
+    + 12 * features.health
+    + 6 * features.discipline
+    - 22 * stressNorm
+    - 12 * burnoutRisk
+    - 8 * financialStrain,
     0,
     100,
   );
   const health = clampMetricValue("health", current.health + 0.16 * (healthTarget - current.health));
 
-  const relationshipsTarget = clamp(
-    44 + 34 * socialInvestment + 6 * features.discipline + 5 * freeTimeNorm - 14 * stressNorm - 10 * workload,
-    0,
-    100,
-  );
+  const socialHoursTarget = clamp(socialHours + 2 * features.discipline + 2 * freeTimeNorm - 3 * stressNorm - 2 * workload, 0, 168);
   const relationships = clampMetricValue(
     "relationships",
-    current.relationships + 0.18 * (relationshipsTarget - current.relationships),
+    current.relationships + 0.18 * (socialHoursTarget - current.relationships),
   );
 
   const careerTarget = clamp(
@@ -439,10 +454,10 @@ function computeDailyMetrics(
 
   const salaryTarget = clamp(
     24_000
-      + career * 1_400
-      + confidenceScore * 22_000
-      + learningIntent * 18_000
-      - burnoutRisk * 12_000,
+    + career * 1_400
+    + confidenceScore * 22_000
+    + learningIntent * 18_000
+    - burnoutRisk * 12_000,
     20_000,
     2_000_000,
   );
@@ -465,7 +480,7 @@ function computeDailyMetrics(
     0.42 + 0.55 * features.spending + 0.18 * features.risk - 0.28 * features.finance - 0.22 * features.discipline,
   );
   const expensesTarget = clamp(
-    afterTaxMonthlyNext * (0.54 + 0.36 * spendingImpulse - 0.20 * savingsIntent) + 180 + (100 - current.money) * 6,
+    afterTaxMonthlyNext * (0.54 + 0.36 * spendingImpulse - 0.20 * savingsIntent) + 180 + debtPressure * 600,
     500,
     1_000_000,
   );
@@ -476,11 +491,11 @@ function computeDailyMetrics(
 
   let expectedReturnAnnual = clamp(
     0.015
-      + 0.08 * features.finance
-      + 0.05 * features.discipline
-      + 0.03 * careerNorm
-      - 0.05 * features.risk
-      - 0.05 * financialStrain,
+    + 0.08 * features.finance
+    + 0.05 * features.discipline
+    + 0.03 * careerNorm
+    - 0.05 * features.risk
+    - 0.05 * financialStrain,
     -0.20,
     0.22,
   );
@@ -498,13 +513,12 @@ function computeDailyMetrics(
   const wealthSignal = clamp01((netWorth + 60_000) / 360_000);
   const salarySignal = clamp01((salary - 24_000) / 180_000);
   const cashflowSignal = clamp01((cashflowMonthly + 1_200) / 4_200);
-  const moneyTarget = clamp(18 + 40 * wealthSignal + 25 * salarySignal + 24 * cashflowSignal - 18 * expenseBurden, 0, 100);
-  const money = clampMetricValue("money", current.money + 0.20 * (moneyTarget - current.money));
+  const moneyScoreRaw = clamp01((18 + 40 * wealthSignal + 25 * salarySignal + 24 * cashflowSignal - 18 * expenseBurden) / 100);
 
   const needsCareer = 1 - careerScore;
   const needsHealth = 1 - healthScore;
   const needsRelationships = 1 - relationshipScore;
-  const needsMoney = 1 - moneyScore;
+  const needsMoney = 1 - moneyScoreRaw;
   const needsFreeTime = 1 - freeTimeScore;
   const needWeightSum = needsCareer + needsHealth + needsRelationships + needsMoney + needsFreeTime + 1e-6;
   const actionNeedAlignment = clamp01(
@@ -519,13 +533,13 @@ function computeDailyMetrics(
 
   const fulfillmentTarget = clamp(
     26
-      + 0.22 * career
-      + 0.22 * relationships
-      + 0.20 * health
-      + 0.14 * money
-      + 0.14 * freeTime
-      - 0.18 * stress
-      + 10 * (actionNeedAlignment - 0.5),
+    + 0.22 * career
+    + 0.22 * relationshipScore * 100
+    + 0.20 * health
+    + 0.14 * moneyScoreRaw * 100
+    + 0.14 * freeTimeScore * 100
+    - 0.18 * stress
+    + 10 * (actionNeedAlignment - 0.5),
     0,
     100,
   );
@@ -535,19 +549,19 @@ function computeDailyMetrics(
   );
 
   const progressSignal = clamp(
-    ((career - current.career) + (money - current.money) + (health - current.health) + (relationships - current.relationships)) / 20,
+    ((career - current.career) + (health - current.health) + (relationshipScore * 100 - clamp01(current.relationships / 30) * 100)) / 15,
     -1,
     1,
   );
   const confidenceTarget = clamp(
     22
-      + 0.30 * career
-      + 0.20 * money
-      + 0.16 * health
-      + 0.14 * relationships
-      + 0.18 * fulfillment
-      - 0.24 * stress
-      + 8 * progressSignal,
+    + 0.30 * career
+    + 0.20 * moneyScoreRaw * 100
+    + 0.16 * health
+    + 0.14 * relationshipScore * 100
+    + 0.18 * fulfillment
+    - 0.24 * stress
+    + 8 * progressSignal,
     0,
     100,
   );
@@ -556,9 +570,16 @@ function computeDailyMetrics(
     current.confidence + 0.17 * (confidenceTarget - current.confidence),
   );
 
+  const healthDelta = health - current.health;
+  const stressDelta = current.stress - stress;
+  const daysAddedToLife = (healthDelta * 3) + (stressDelta * 1) + (features.health * 2 - features.risk * 5);
+  const projectedDeathDate = clampMetricValue(
+    "projectedDeathDate",
+    current.projectedDeathDate + daysAddedToLife * 24 * 60 * 60 * 1000,
+  );
+
   return {
     health,
-    money,
     career,
     relationships,
     fulfillment,
@@ -568,6 +589,7 @@ function computeDailyMetrics(
     salary,
     monthlyExpenses,
     confidence,
+    projectedDeathDate,
   };
 }
 
@@ -584,7 +606,7 @@ export function deterministicTransition(params: TransitionInput): DeterministicT
   const metricDeltas: Partial<SimulationMetrics> = {};
   for (const key of simulationMetricKeys) {
     const delta = current[key] - baseline[key];
-    metricDeltas[key] = key === "salary" || key === "netWorth" || key === "monthlyExpenses"
+    metricDeltas[key] = key === "salary" || key === "netWorth" || key === "monthlyExpenses" || key === "projectedDeathDate"
       ? Math.round(delta)
       : Number(delta.toFixed(2));
   }

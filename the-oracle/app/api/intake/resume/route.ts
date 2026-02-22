@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getAuthUser } from "@/lib/auth";
 import { saveAgentMemory } from "@/lib/game-db";
+import type { OnboardingLinkedinProfile } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -51,18 +53,10 @@ async function extractPdfText(buffer: Buffer) {
     pdfWorkerLoaded = true;
   }
 
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({
-    data: new Uint8Array(buffer),
-    useWorkerFetch: false,
-    disableFontFace: true,
-  });
-  try {
-    const result = await parser.getText();
-    return result.text ?? "";
-  } finally {
-    await parser.destroy();
-  }
+  const pdfModule = await import("pdf-parse") as any;
+  const pdf = pdfModule.default || pdfModule;
+  const result = await (pdf as unknown as (data: Buffer) => Promise<{ text: string }>)(buffer);
+  return result.text ?? "";
 }
 
 async function extractDocxText(buffer: Buffer) {
@@ -135,16 +129,63 @@ export async function POST(req: Request) {
       );
     }
 
+    let profile: OnboardingLinkedinProfile | null = null;
+    try {
+      if (process.env.GEMINI_API_KEY) {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const prompt = `You are an expert resume parser. Extract the following candidate information from the provided resume text.
+Format the output as a valid JSON object matching this schema:
+{
+  "fullName": "string (optional)",
+  "headline": "string (optional, usually current role or summary)",
+  "location": "string (optional)",
+  "about": "string (optional, professional summary)",
+  "experiences": ["string (format: 'Role @ Company | Date Range | Summary')", ...],
+  "projects": ["string (format: 'Project Name | Summary')", ...],
+  "skills": ["string", ...],
+  "education": ["string (format: 'School | Degree | Date Range')", ...],
+  "certifications": ["string (format: 'Name | Issuer')", ...]
+}
+Return ONLY the raw JSON object, without any markdown formatting or code blocks. Make sure arrays are strings. Limit arrays to top 15 items each.
+
+Resume Text:
+${text.slice(0, 30_000)}
+`;
+        const result = await model.generateContent({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+          },
+        });
+        const responseText = result.response.text();
+        const parsedProfile = JSON.parse(responseText);
+        profile = {
+          source: "resume",
+          profileUrl: "",
+          scrapedAt: new Date().toISOString(),
+          ...parsedProfile
+        };
+      }
+    } catch (llmError) {
+      console.error("LLM Extraction failed:", llmError);
+    }
+
     await saveAgentMemory({
       profile_id: user.id,
       category: "onboarding_intake",
       key: "onboarding_resume_latest",
-      content: text.slice(0, 12_000),
+      content: JSON.stringify({
+        profile,
+        text: text.slice(0, 12_000),
+        updatedAt: new Date().toISOString()
+      }),
       importance: 90,
     });
 
     return NextResponse.json({
       text,
+      profile,
       meta: {
         parser,
         fileName: rawFile.name,

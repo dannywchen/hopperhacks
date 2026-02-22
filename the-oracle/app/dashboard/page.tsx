@@ -11,8 +11,8 @@ import {
   Flag,
   PlusCircle,
   Settings,
-  Share2,
   Sparkles,
+  Pencil,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import { hydrateLocalSimulationStateFromSupabase } from "@/lib/client/cloud-state";
@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import ClassicLoader from "@/components/ui/loader";
 import { Textarea } from "@/components/ui/textarea";
+import { SpriteEditModal } from "@/components/dashboard/sprite-edit-modal";
 import styles from "./dashboard.module.css";
 import type {
   OnboardingAvatar,
@@ -69,10 +70,10 @@ const metricCards: Array<{
   detail: string;
 }> = [
     {
-      key: "money",
-      label: "Money",
-      format: (value) => `${Math.round(value)}/100`,
-      detail: "Represents financial flexibility and day-to-day confidence with money decisions.",
+      key: "projectedDeathDate",
+      label: "Proj. Death Date",
+      format: (value) => new Date(value).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }),
+      detail: "Expected longevity based on compounding health and stress signals.",
     },
     {
       key: "netWorth",
@@ -87,6 +88,18 @@ const metricCards: Array<{
       detail: "Estimated yearly compensation trajectory based on your path so far.",
     },
     {
+      key: "relationships",
+      label: "Relationships",
+      format: (value) => `${value.toFixed(1)} hrs/wk`,
+      detail: "Measures weekly time successfully invested in relationships and social connection.",
+    },
+    {
+      key: "freeTime",
+      label: "Free Time",
+      format: (value) => `${value.toFixed(1)} hrs/wk`,
+      detail: "Available weekly breathing room for recovery and exploration.",
+    },
+    {
       key: "career",
       label: "Career",
       format: (value) => `${Math.round(value)}/100`,
@@ -99,10 +112,10 @@ const metricCards: Array<{
       detail: "Composite health marker combining energy, rhythm, and resilience.",
     },
     {
-      key: "relationships",
-      label: "Relationships",
+      key: "stress",
+      label: "Stress",
       format: (value) => `${Math.round(value)}/100`,
-      detail: "Measures relationship quality, support depth, and social consistency.",
+      detail: "Higher values indicate sustained pressure and lower buffer capacity.",
     },
     {
       key: "fulfillment",
@@ -110,24 +123,20 @@ const metricCards: Array<{
       format: (value) => `${Math.round(value)}/100`,
       detail: "How aligned your daily decisions are with meaning and personal priorities.",
     },
-    {
-      key: "stress",
-      label: "Stress",
-      format: (value) => `${Math.round(value)}/100`,
-      detail: "Higher values indicate sustained pressure and lower buffer capacity.",
-    },
-    {
-      key: "freeTime",
-      label: "Free Time",
-      format: (value) => `${Math.round(value)}/100`,
-      detail: "Available breathing room for recovery, relationships, and exploration.",
-    },
   ];
 
 const createDefaults = {
   mode: "manual_step" as SimulationMode,
   horizonPreset: "10_years" as SimulationHorizonPreset,
 };
+
+const actionLoadingPhrases = [
+  "Reading the leaves...",
+  "The oracle stirs...",
+  "Patterns emerging...",
+  "Your fate awaits...",
+  "Leaves settling...",
+];
 
 function cleanText(value: unknown, maxChars = 220) {
   const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
@@ -141,6 +150,55 @@ function scoreColor(value: number) {
   return "text-gray-500";
 }
 
+async function svgToPng(svgString: string, width: number, height: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      reject(new Error("Could not get canvas context"));
+      return;
+    }
+
+    const img = new window.Image();
+    const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgString);
+
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Canvas toBlob failed"));
+      }, "image/png");
+    };
+    img.onerror = (err) => {
+      reject(err instanceof Error ? err : new Error("Image loading failed"));
+    };
+    img.src = url;
+  });
+}
+
+function renderTrend(delta: number, formatLabel: (v: number) => string) {
+  const abs = Math.abs(delta);
+  const formatted = formatLabel(abs);
+
+  if (delta > 0) {
+    return (
+      <span className={styles.trendUp}>
+        ▲ {formatted}
+      </span>
+    );
+  }
+  if (delta < 0) {
+    return (
+      <span className={styles.trendDown}>
+        ▼ {formatted}
+      </span>
+    );
+  }
+  return <span className="text-white/20">—</span>;
+}
+
 function metricValue(
   metrics: SimulationMetrics | undefined,
   key: keyof SimulationMetrics,
@@ -148,6 +206,20 @@ function metricValue(
   if (!metrics) return 0;
   const value = metrics[key];
   return Number.isFinite(value) ? value : 0;
+}
+
+function formatMetricDelta(key: keyof SimulationMetrics, value: number) {
+  if (key === "projectedDeathDate") {
+    const days = Math.round(value / (1000 * 60 * 60 * 24));
+    return `${Math.abs(days)} days`;
+  }
+  if (key === "relationships" || key === "freeTime") {
+    return `${Math.abs(value).toFixed(1)} hrs`;
+  }
+  if (key === "netWorth" || key === "salary" || key === "monthlyExpenses") {
+    return `$${Math.round(Math.abs(value)).toLocaleString()}`;
+  }
+  return String(Math.round(Math.abs(value)));
 }
 
 function asAvatar(setup: UserSetup | null): OnboardingAvatar {
@@ -210,6 +282,9 @@ function DashboardContent() {
   const [nodes, setNodes] = useState<SimulationNode[]>([]);
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [selectedMetric, setSelectedMetric] = useState<keyof SimulationMetrics | null>(null);
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const [showMobileStats, setShowMobileStats] = useState(false);
+  const [showEndDialog, setShowEndDialog] = useState(false);
   const [customAction, setCustomAction] = useState("");
   const [createMode, setCreateMode] = useState(createDefaults.mode);
   const [createHorizonPreset, setCreateHorizonPreset] = useState(createDefaults.horizonPreset);
@@ -224,7 +299,9 @@ function DashboardContent() {
     return window.sessionStorage.getItem(ONBOARDING_DASHBOARD_TRANSITION_KEY) === "1";
   });
   const [fadeOutTransition, setFadeOutTransition] = useState(false);
+  const [loadingPhraseIndex, setLoadingPhraseIndex] = useState(0);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [isSpriteEditModalOpen, setIsSpriteEditModalOpen] = useState(false);
 
   const avatar = useMemo(() => asAvatar(setup), [setup]);
   const latestNode = nodes[nodes.length - 1] ?? null;
@@ -233,7 +310,7 @@ function DashboardContent() {
     () => (focusedNodeId ? nodes.find((node) => node.id === focusedNodeId) ?? latestNode : latestNode),
     [focusedNodeId, latestNode, nodes],
   );
-  const runMetrics = latestNode?.metricsSnapshot ?? activeRun?.latestMetrics;
+  const runMetrics = focusedNode?.metricsSnapshot ?? latestNode?.metricsSnapshot ?? activeRun?.latestMetrics;
   const baselineMetrics = activeRun?.baselineMetrics;
 
   const manualOptions = useMemo(() => {
@@ -283,6 +360,17 @@ function DashboardContent() {
       setShowTutorial(true);
     }
   }, [bootLoading, showOnboardingTransition, setup]);
+
+  useEffect(() => {
+    if (!actionLoading) return;
+    const phraseTimer = window.setInterval(() => {
+      setLoadingPhraseIndex((current) => (current + 1) % actionLoadingPhrases.length);
+    }, 1800);
+
+    return () => {
+      window.clearInterval(phraseTimer);
+    };
+  }, [actionLoading]);
 
   const bootDashboard = useCallback(async () => {
     setBootLoading(true);
@@ -367,11 +455,12 @@ function DashboardContent() {
   }, [createHorizonPreset, createMode]);
 
   const performStep = useCallback(
-    async (option?: SimulationActionOption) => {
+    async (optionOverride?: SimulationActionOption) => {
       if (!activeRun) return;
       if (activeRun.mode !== "manual_step") return;
       if (activeRun.status !== "active") return;
 
+      const option = optionOverride || manualOptions.find((o) => o.id === selectedOptionId);
       const custom = cleanText(customAction, 220);
       if (!option && !custom) return;
 
@@ -392,6 +481,7 @@ function DashboardContent() {
         const updatedNodes = updated.nodes ?? [];
         setNodes(updatedNodes);
         setFocusedNodeId(updatedNodes.length ? updatedNodes[updatedNodes.length - 1].id : null);
+        setSelectedOptionId(null);
         if (!option) {
           setCustomAction("");
         }
@@ -401,7 +491,7 @@ function DashboardContent() {
         setActionLoading(false);
       }
     },
-    [activeRun, customAction],
+    [activeRun, customAction, manualOptions, selectedOptionId],
   );
 
   useEffect(() => {
@@ -425,6 +515,7 @@ function DashboardContent() {
       setNodes(endedNodes);
       setFocusedNodeId(endedNodes.length ? endedNodes[endedNodes.length - 1].id : null);
       setWrapSummary(result.wrap ?? null);
+      setShowEndDialog(true);
       const refreshed = await authFetch<SimulationListResponse>("/api/simulation?limit=50");
       setSimulations(refreshed.simulations ?? []);
     } catch (err: unknown) {
@@ -434,88 +525,127 @@ function DashboardContent() {
     }
   }, [activeRun, endingSimulation]);
 
-  const shareWrap = useCallback(async () => {
-    if (!wrapSummary || !activeRun) return;
-    const text = [
-      `The Oracle Wrapped: ${wrapSummary.title}`,
-      `Mode: ${wrapSummary.mode === "auto_future" ? "Time Into The Future" : "Manual Story Mode"}`,
-      `Timeline nodes: ${wrapSummary.totalNodes}`,
-      `Top growth metric: ${wrapSummary.topGrowthMetric} (+${wrapSummary.topGrowthValue})`,
-      wrapSummary.summaryParagraph,
-    ].join("\n");
+  const isWrapVisible = Boolean(wrapSummary);
 
+  const downloadWrapGraphic = useCallback(async () => {
+    if (!wrapSummary || !activeRun) return;
+
+    setEndingSimulation(true); // Re-use loading state for download
     try {
-      if (navigator.share) {
-        await navigator.share({
-          title: `${activeRun.title} - Oracle Wrapped`,
-          text,
-        });
-        return;
+      const avatar = asAvatar(setup);
+      const parts = (() => {
+        const values = Object.fromEntries(
+          avatar.spriteId
+            .split("|")
+            .map((segment) => segment.trim())
+            .map((segment) => segment.split(":").map((part) => part.trim()))
+            .filter((parts) => parts.length === 2 && parts[0] && parts[1]),
+        ) as Record<string, string>;
+
+        return {
+          head: values.head || "beige",
+          hair: values.hair || "short-brown",
+          outfit: values.outfit || "blue-guard",
+        };
+      })();
+
+      // Simple mapping for hair front paths (mirroring pixel-avatar.tsx mapping indirectly)
+      const hairFile = parts.hair;
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+
+      const getBase64 = async (url: string) => {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) return url;
+          const blob = await res.blob();
+          return await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch (e) {
+          return url;
+        }
+      };
+
+      const [clothesB64, headB64, hairB64] = await Promise.all([
+        getBase64(`${baseUrl}/sprite-parts/clothes/${parts.outfit}.png`),
+        getBase64(`${baseUrl}/sprite-parts/head/${parts.head}.png`),
+        getBase64(`${baseUrl}/sprite-parts/hair/front/${hairFile}.png`),
+      ]);
+
+      const paragraphText = cleanText(wrapSummary.summaryParagraph, 160);
+      const words = paragraphText.split(' ');
+      const lines: string[] = [];
+      let currentLine = '';
+      for (const word of words) {
+        if ((currentLine + word).length > 28) {
+          lines.push(currentLine.trim());
+          currentLine = word + ' ';
+        } else {
+          currentLine += word + ' ';
+        }
       }
-      await navigator.clipboard.writeText(text);
-      setError("Wrapped summary copied to clipboard.");
-    } catch {
-      setError("Unable to share this summary on your current device.");
-    }
-  }, [activeRun, wrapSummary]);
+      if (currentLine) lines.push(currentLine.trim());
 
-  const downloadWrapGraphic = useCallback(() => {
-    if (!wrapSummary || !activeRun) return;
-    const topMoments = wrapSummary.topStoryMoments
-      .slice(0, 3)
-      .map((moment, index) =>
-        `${index + 1}. N${moment.seq} ${cleanText(moment.label, 46)}`
-      );
-    const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#321354"/>
-      <stop offset="100%" stop-color="#081b36"/>
-    </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#6ee7f9"/>
-      <stop offset="100%" stop-color="#f8b4fe"/>
-    </linearGradient>
-  </defs>
-  <rect width="1080" height="1350" fill="url(#bg)"/>
-  <rect x="64" y="64" width="952" height="1222" rx="40" fill="rgba(5,10,23,0.58)" stroke="rgba(255,255,255,0.22)"/>
-  <text x="100" y="150" fill="#d1fae5" font-size="26" font-family="Georgia">THE ORACLE WRAPPED</text>
-  <text x="100" y="218" fill="#ffffff" font-size="56" font-family="Georgia" font-weight="700">${cleanText(wrapSummary.title, 32)}</text>
-  <text x="100" y="268" fill="#bfdbfe" font-size="24" font-family="Georgia">${activeRun.mode === "auto_future" ? "Time Into The Future" : "Manual Story Mode"}</text>
+      const maxLines = 6;
+      const displayLines = lines.slice(0, maxLines);
+      const lineHeight = 38;
+      const startY = 1180 - (displayLines.length * lineHeight);
 
-  <rect x="100" y="320" width="880" height="180" rx="24" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.16)"/>
-  <text x="130" y="378" fill="#f9fafb" font-size="34" font-family="Georgia">Top Growth: ${cleanText(wrapSummary.topGrowthMetric, 20)} (+${wrapSummary.topGrowthValue})</text>
-  <text x="130" y="430" fill="#bae6fd" font-size="24" font-family="Georgia">Timeline nodes: ${wrapSummary.totalNodes} • Simulated days: ${wrapSummary.durationDays}</text>
+      const journeyTextTags = displayLines.map((line, i) =>
+        `<text x="980" y="${startY + 40 + (i * lineHeight)}" fill="#ffffff" font-size="24" font-family="monospace" text-anchor="end">${line}</text>`
+      ).join('\\n  ');
 
-  <text x="100" y="568" fill="#f0f9ff" font-size="30" font-family="Georgia">Story Highlights</text>
-  <text x="120" y="624" fill="#e2e8f0" font-size="22" font-family="Georgia">${cleanText(topMoments[0] ?? "-", 70)}</text>
-  <text x="120" y="668" fill="#e2e8f0" font-size="22" font-family="Georgia">${cleanText(topMoments[1] ?? "-", 70)}</text>
-  <text x="120" y="712" fill="#e2e8f0" font-size="22" font-family="Georgia">${cleanText(topMoments[2] ?? "-", 70)}</text>
+      const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350" style="background-color: #000;">
+  <rect width="1080" height="1350" fill="#000000"/>
+  
+  <!-- User Sprite - High Center -->
+  <g transform="translate(340, 150) scale(2.8)">
+    <image href="${clothesB64}" x="15" y="65" width="110" height="60" style="image-rendering: pixelated;"/>
+    <image href="${headB64}" x="14" y="6" width="112" height="72" style="image-rendering: pixelated;"/>
+    <image href="${hairB64}" x="20" y="-1" width="100" height="58" style="image-rendering: pixelated;"/>
+  </g>
 
-  <rect x="100" y="770" width="880" height="390" rx="24" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.16)"/>
-  <text x="130" y="830" fill="#f9fafb" font-size="28" font-family="Georgia">Final Metrics</text>
-  <text x="130" y="884" fill="#dbeafe" font-size="22" font-family="Georgia">Money: ${Math.round(wrapSummary.finalMetrics.money)}/100</text>
-  <text x="130" y="924" fill="#dbeafe" font-size="22" font-family="Georgia">Career: ${Math.round(wrapSummary.finalMetrics.career)}/100</text>
-  <text x="130" y="964" fill="#dbeafe" font-size="22" font-family="Georgia">Health: ${Math.round(wrapSummary.finalMetrics.health)}/100</text>
-  <text x="130" y="1004" fill="#dbeafe" font-size="22" font-family="Georgia">Relationships: ${Math.round(wrapSummary.finalMetrics.relationships)}/100</text>
-  <text x="130" y="1044" fill="#dbeafe" font-size="22" font-family="Georgia">Net Worth: $${Math.round(wrapSummary.finalMetrics.netWorth).toLocaleString()}</text>
-  <text x="130" y="1084" fill="#dbeafe" font-size="22" font-family="Georgia">Salary: $${Math.round(wrapSummary.finalMetrics.salary).toLocaleString()}</text>
+  <!-- Title & Meta -->
+  <text x="540" y="580" fill="#ffffff" font-size="64" font-family="monospace" font-weight="900" text-anchor="middle" style="text-transform: uppercase;">${cleanText(wrapSummary.title, 24)}</text>
+  <text x="540" y="640" fill="#888888" font-size="28" font-family="monospace" text-anchor="middle" letter-spacing="4">THE ORACLE WRAPPED // ${activeRun.mode.replace("_", " ").toUpperCase()}</text>
 
-  <rect x="100" y="1198" width="880" height="12" rx="6" fill="url(#accent)"/>
-  <text x="100" y="1260" fill="#cbd5e1" font-size="22" font-family="Georgia">${cleanText(wrapSummary.summaryParagraph, 92)}</text>
+  <!-- Metrics Grid - Bottom Left -->
+  <g transform="translate(100, 850)">
+    <text y="0" fill="#ffffff" font-size="32" font-family="monospace" font-weight="700">FINAL METRICS</text>
+    <text y="60" fill="#4ade80" font-size="42" font-family="monospace" font-weight="900">Career: ${Math.round(wrapSummary.finalMetrics.career)}</text>
+    <text y="120" fill="#fbbf24" font-size="42" font-family="monospace" font-weight="900">Salary: $${Math.round(wrapSummary.finalMetrics.salary).toLocaleString()}</text>
+    <text y="180" fill="#f87171" font-size="42" font-family="monospace" font-weight="900">Health: ${Math.round(wrapSummary.finalMetrics.health)}</text>
+    <text y="240" fill="#60a5fa" font-size="42" font-family="monospace" font-weight="900">Social: ${Math.round(wrapSummary.finalMetrics.relationships)}</text>
+    <text y="300" fill="#ffffff" font-size="28" font-family="monospace" opacity="0.6">Net Worth: $${Math.round(wrapSummary.finalMetrics.netWorth).toLocaleString()}</text>
+  </g>
+
+  <!-- Summary Text - Bottom Right -->
+  <text x="980" y="${startY}" fill="#ffffff" font-size="18" font-family="monospace" font-weight="700" text-anchor="end" opacity="0.5" letter-spacing="2">YOUR JOURNEY</text>
+  ${journeyTextTags}
+
+  <!-- Logo -->
+  <text x="980" y="1280" fill="#ffffff" font-size="40" font-family="monospace" font-weight="900" text-anchor="end" opacity="0.8">THE ORACLE</text>
 </svg>`.trim();
 
-    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${activeRun.title.replace(/\s+/g, "-").toLowerCase()}-wrapped.svg`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
-  }, [activeRun, wrapSummary]);
+      const blob = await svgToPng(svg, 1080, 1350);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${activeRun.title.replace(/\s+/g, "-").toLowerCase()}-wrapped.png`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Unable to export PNG.");
+    } finally {
+      setEndingSimulation(false);
+    }
+  }, [activeRun, wrapSummary, setup]);
 
   const activeMetricConfig = metricCards.find((metric) => metric.key === selectedMetric) ?? null;
   const activeMetricSeries = selectedMetric ? chartPoints(nodes, selectedMetric) : [];
@@ -552,12 +682,39 @@ function DashboardContent() {
 
   return (
     <>
-      <main className={`${styles.page} ${showOnboardingTransition ? styles.pageHidden : ""}`}>
+      <main
+        className={`${styles.page} ${showOnboardingTransition ? styles.pageHidden : ""} ${isWrapVisible ? styles.pageScrollable : ""}`}
+      >
+        <div className={styles.mobileHeader}>
+          <button
+            type="button"
+            onClick={() => setShowMobileStats(!showMobileStats)}
+            className={styles.mobileStatsToggle}
+          >
+            <BarChart3 className="h-4 w-4" />
+            Stats
+          </button>
+          <div className={styles.mobileTopActions}>
+            <Link href="/settings" className={styles.sideAction}>
+              <Settings className="h-4 w-4" />
+            </Link>
+            <Button
+              type="button"
+              onClick={() => void endGame()}
+              disabled={!activeRun || activeRun.status === "ended" || endingSimulation}
+              className={styles.sideEndButton}
+            >
+              <Flag className="h-4 w-4" />
+              {endingSimulation ? <ClassicLoader size="sm" /> : "End"}
+            </Button>
+          </div>
+        </div>
+
         <div className={styles.shell}>
           {activeRun ? (
-            <div className={styles.frameShell}>
-              <div className={styles.mainGrid}>
-                <section className={styles.leftColumn}>
+            <div className={`${styles.frameShell} ${isWrapVisible ? styles.frameShellWrapVisible : ""}`}>
+              <div className={`${styles.mainGrid} ${isWrapVisible ? styles.mainGridWrapVisible : ""}`}>
+                <section className={`${styles.leftColumn} ${isWrapVisible ? styles.leftColumnWrapVisible : ""}`}>
                   <div className={`${styles.timelinePanel} arcane-panel arcane-panel-outline-fat`}>
                     <div className={styles.timelineTopRow}>
                       <p className={styles.timelineLabel}>Timeline</p>
@@ -585,19 +742,38 @@ function DashboardContent() {
                     </div>
                   </div>
 
-                  <div className={styles.stagePanel}>
+                  <div className={`${styles.stagePanel} ${isWrapVisible ? styles.stagePanelWrapVisible : ""}`}>
                     <div className={styles.avatarArea}>
                       <div className={styles.avatarContainer}>
-                        <PixelAvatar avatar={avatar} size={230} />
+                        <div className={styles.avatarWrapper}>
+                          <PixelAvatar avatar={avatar} size={230} />
+                          <button
+                            type="button"
+                            onClick={() => setIsSpriteEditModalOpen(true)}
+                            className={styles.editAvatarButton}
+                            title="Edit Avatar"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
-                      <div className={styles.bubbleContainer}>
+                      <div className={`${styles.bubbleContainer} ${isWrapVisible ? styles.bubbleContainerWrapVisible : ""}`}>
                         <p className={styles.bubbleTitle}>Story + changelog</p>
                         <p className={styles.bubbleBody}>{headlineStory}</p>
                         <div className={styles.changeList}>
                           {changelog.length > 0 ? (
-                            changelog.map((entry, index) => (
-                              <p key={`${entry}-${index}`}>• {entry}</p>
-                            ))
+                            changelog.map((entry, index) => {
+                              const isPositive = entry.includes("+") || entry.toLowerCase().includes("increased");
+                              const isNegative = entry.includes("-") || entry.toLowerCase().includes("decreased");
+                              const icon = isPositive ? "▲" : isNegative ? "▼" : "•";
+                              const colorClass = isPositive ? styles.trendUp : isNegative ? styles.trendDown : "";
+
+                              return (
+                                <p key={`${entry}-${index}`} className={colorClass}>
+                                  {icon} {entry.replace(/^[+-]\s*/, "")}
+                                </p>
+                              );
+                            })
                           ) : (
                             <p>No metric change logged on this node.</p>
                           )}
@@ -605,42 +781,58 @@ function DashboardContent() {
                       </div>
                     </div>
 
-                    <div className={styles.optionsArea}>
+                    <div className={`${styles.optionsArea} ${isWrapVisible ? styles.optionsAreaWrapVisible : ""}`}>
                       {activeRun.mode === "manual_step" && activeRun.status === "active" ? (
-                        <div className={styles.optionsGrid}>
-                          {manualOptions.map((option) => (
-                            <button
-                              key={option.id}
-                              type="button"
-                              onClick={() => void performStep(option)}
-                              disabled={actionLoading}
-                              className={styles.optionCard}
-                            >
-                              <p className={styles.optionCardTitle}>{option.title}</p>
-                              <p className={styles.optionCardDesc}>{option.description}</p>
-                              <p className={styles.optionCardHint}>{option.impactHint}</p>
-                            </button>
-                          ))}
-                          <div className={styles.customOptionCard}>
-                            <p className={styles.customTitle}>Custom (manual)</p>
-                            <Textarea
-                              value={customAction}
-                              onChange={(event) => setCustomAction(event.target.value)}
-                              placeholder="Define your own next action..."
-                              className={styles.customInput}
-                            />
-                            <div className="mt-2 flex justify-end">
-                              <Button
+                        <>
+                          <div className={styles.optionsGrid}>
+                            {manualOptions.map((option) => (
+                              <button
+                                key={option.id}
                                 type="button"
-                                onClick={() => void performStep()}
-                                disabled={actionLoading || !cleanText(customAction, 220)}
-                                className={styles.customRunButton}
+                                onClick={() => {
+                                  setSelectedOptionId(option.id);
+                                  setCustomAction(""); // Clear custom if picking a preset
+                                }}
+                                disabled={actionLoading}
+                                className={`${styles.optionCard} ${selectedOptionId === option.id ? styles.optionCardSelected : ""}`}
                               >
-                                {actionLoading ? <ClassicLoader size="sm" /> : "Run"}
-                              </Button>
+                                <p className={styles.optionCardTitle}>{option.title}</p>
+                                <p className={styles.optionCardDesc}>{option.description}</p>
+                                <p className={styles.optionCardHint}>{option.impactHint}</p>
+                              </button>
+                            ))}
+                            <div
+                              className={`${styles.customOptionCard} ${selectedOptionId === "custom" ? styles.optionCardSelected : ""}`}
+                              onClick={() => setSelectedOptionId("custom")}
+                            >
+                              <p className={styles.customTitle}>Custom (manual)</p>
+                              <Textarea
+                                value={customAction}
+                                onFocus={() => setSelectedOptionId("custom")}
+                                onChange={(event) => {
+                                  setCustomAction(event.target.value);
+                                  setSelectedOptionId("custom");
+                                }}
+                                placeholder="Define your own next action..."
+                                className={styles.customInput}
+                              />
                             </div>
                           </div>
-                        </div>
+                          {selectedOptionId && (
+                            <div className="mt-4 flex justify-center">
+                              <Button
+                                onClick={() => void performStep()}
+                                disabled={
+                                  actionLoading ||
+                                  (selectedOptionId === "custom" && !cleanText(customAction, 220))
+                                }
+                                className="w-full h-12 bg-white text-black font-bold uppercase transition-all hover:bg-white/90 border-0"
+                              >
+                                {actionLoading ? <ClassicLoader size="sm" /> : "Confirm Choice"}
+                              </Button>
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <div className={styles.autoHintBlock}>
                           <p className="flex items-center gap-2">
@@ -655,10 +847,17 @@ function DashboardContent() {
                   </div>
                 </section>
 
-                <aside className={styles.statsPanel}>
+                <aside className={`${styles.statsPanel} ${showMobileStats ? styles.statsPanelMobileOpen : ""}`}>
+                  <button
+                    type="button"
+                    className={styles.mobileDrawerClose}
+                    onClick={() => setShowMobileStats(false)}
+                  >
+                    ×
+                  </button>
                   <div className={styles.statsHeader}>
                     <p className={styles.statsTitle}>Stats</p>
-                    <div className={styles.statsActions}>
+                    <div className={`${styles.statsActions} sm:flex hidden`}>
                       <Link href="/settings" className={styles.sideAction}>
                         <Settings className="h-4 w-4" />
                         Settings
@@ -680,7 +879,6 @@ function DashboardContent() {
                       const value = metricValue(runMetrics, metric.key);
                       const baseline = metricValue(baselineMetrics, metric.key);
                       const delta = value - baseline;
-                      const sign = delta >= 0 ? "+" : "";
                       return (
                         <button
                           key={metric.key}
@@ -695,10 +893,7 @@ function DashboardContent() {
                             </p>
                           </div>
                           <p className={styles.statDelta}>
-                            {sign}
-                            {metric.key === "netWorth" || metric.key === "salary" || metric.key === "monthlyExpenses"
-                              ? `$${Math.round(delta).toLocaleString()}`
-                              : Math.round(delta)}
+                            {renderTrend(delta, () => formatMetricDelta(metric.key, delta))}
                           </p>
                         </button>
                       );
@@ -729,10 +924,6 @@ function DashboardContent() {
                   <h2 className={styles.wrapTitle}>Wrapped: {wrapSummary.title}</h2>
                   <p className={styles.wrapText}>{wrapSummary.summaryParagraph}</p>
                 </div>
-                <Button type="button" onClick={() => void shareWrap()} className={styles.wrapShare}>
-                  <Share2 className="mr-1 h-4 w-4" />
-                  Share Wrapped
-                </Button>
               </div>
               <div className={styles.wrapDownloadRow}>
                 <Button type="button" onClick={downloadWrapGraphic} className={styles.wrapDownload}>
@@ -744,7 +935,8 @@ function DashboardContent() {
                 <div className={styles.wrapStat}>
                   <p className={styles.wrapStatLabel}>Top Growth Metric</p>
                   <p className={styles.wrapStatValue}>
-                    {wrapSummary.topGrowthMetric} (+{wrapSummary.topGrowthValue})
+                    {wrapSummary.topGrowthMetric}{" "}
+                    {renderTrend(wrapSummary.topGrowthValue, (v) => `+${Math.round(v)}`)}
                   </p>
                 </div>
                 <div className={styles.wrapStat}>
@@ -799,12 +991,11 @@ function DashboardContent() {
               </div>
               <div className={styles.dialogStat}>
                 <p className={styles.dialogStatLabel}>Change</p>
-                <p className={`${styles.dialogStatValue} ${activeMetricDelta >= 0 ? "text-white" : "text-gray-400"}`}>
-                  {activeMetricDelta >= 0 ? "+" : ""}
-                  {selectedMetric === "netWorth" || selectedMetric === "salary" || selectedMetric === "monthlyExpenses"
-                    ? `$${Math.round(activeMetricDelta).toLocaleString()}`
-                    : Math.round(activeMetricDelta)}
-                </p>
+                <div className={styles.dialogStatValue}>
+                  {renderTrend(activeMetricDelta, () =>
+                    selectedMetric ? formatMetricDelta(selectedMetric, activeMetricDelta) : String(Math.round(activeMetricDelta))
+                  )}
+                </div>
               </div>
             </div>
 
@@ -831,6 +1022,26 @@ function DashboardContent() {
           </DialogContent>
         </Dialog>
       </main>
+      {actionLoading ? (
+        <div className={styles.actionLoaderOverlay} role="status" aria-live="polite" aria-label="Processing choice">
+          <div className={styles.actionLoaderCard}>
+            <div className={styles.actionLoaderCup} aria-hidden>
+              <div className={styles.actionLoaderTea} />
+              <div className={styles.actionLoaderSteam}>
+                <span />
+                <span />
+                <span />
+              </div>
+            </div>
+            <p className={styles.actionLoaderLabel}>{actionLoadingPhrases[loadingPhraseIndex]}</p>
+            <div className={styles.actionLoaderDots} aria-hidden>
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+        </div>
+      ) : null}
       {showOnboardingTransition ? (
         <div
           className={`${styles.onboardingTransitionOverlay} ${fadeOutTransition ? styles.onboardingTransitionFadeOut : ""
@@ -849,6 +1060,91 @@ function DashboardContent() {
         </div>
       ) : null}
 
+      <Dialog open={showEndDialog} onOpenChange={setShowEndDialog}>
+        <DialogContent className="max-w-2xl bg-[#000] border-white/10 p-0 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,1)]">
+          <div className="p-10 flex flex-col items-center text-center">
+            <DialogHeader className="mb-8">
+              <DialogTitle className="text-4xl font-black uppercase tracking-tighter text-white">
+                Simulation Archived
+              </DialogTitle>
+              <DialogDescription className="text-white/50 text-base font-medium">
+                Your future self has been recorded. Grab your summary and start the next chapter.
+              </DialogDescription>
+            </DialogHeader>
+
+            {wrapSummary && (
+              <div className="w-full flex flex-col items-center gap-8">
+                {/* Wrapped Preview Box */}
+                <div className="relative aspect-[1080/1350] w-[280px] bg-[#050505] border border-white/10 overflow-hidden shadow-2xl group">
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none transition-transform duration-500 group-hover:scale-110">
+                    <Suspense fallback={<ClassicLoader size="sm" />}>
+                      <div className="scale-[0.25] origin-center opacity-90">
+                        <div dangerouslySetInnerHTML={{
+                          __html: `
+                          <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350" style="background-color: #000;">
+                            <rect width="1080" height="1350" fill="#000000"/>
+                            <g transform="translate(340, 150) scale(2.8)">
+                              <image href="/sprite-parts/clothes/${(() => {
+                              const avatar = asAvatar(setup);
+                              return avatar.spriteId.split("|").find(s => s.startsWith("outfit:"))?.split(":")[1] || "blue-guard";
+                            })()}.png" x="15" y="65" width="110" height="60" style="image-rendering: pixelated;"/>
+                              <image href="/sprite-parts/head/${(() => {
+                              const avatar = asAvatar(setup);
+                              return avatar.spriteId.split("|").find(s => s.startsWith("head:"))?.split(":")[1] || "beige";
+                            })()}.png" x="14" y="6" width="112" height="72" style="image-rendering: pixelated;"/>
+                              <image href="/sprite-parts/hair/front/${(() => {
+                              const avatar = asAvatar(setup);
+                              return avatar.spriteId.split("|").find(s => s.startsWith("hair:"))?.split(":")[1] || "short-brown";
+                            })()}.png" x="20" y="-1" width="100" height="58" style="image-rendering: pixelated;"/>
+                            </g>
+                            <text x="540" y="580" fill="#ffffff" font-size="64" font-family="monospace" font-weight="900" text-anchor="middle" style="text-transform: uppercase;">${cleanText(wrapSummary.title, 24)}</text>
+                            <text x="540" y="640" fill="#444444" font-size="28" font-family="monospace" text-anchor="middle" letter-spacing="4">THE ORACLE WRAPPED</text>
+                            <g transform="translate(100, 850)">
+                              <text y="60" fill="#4ade80" font-size="42" font-family="monospace" font-weight="900">Career: ${Math.round(wrapSummary.finalMetrics.career)}</text>
+                              <text y="120" fill="#fbbf24" font-size="42" font-family="monospace" font-weight="900">Salary: $${Math.round(wrapSummary.finalMetrics.salary).toLocaleString()}</text>
+                              <text y="180" fill="#f87171" font-size="42" font-family="monospace" font-weight="900">Health: ${Math.round(wrapSummary.finalMetrics.health)}</text>
+                            </g>
+                          </svg>`.trim()
+                        }} />
+                      </div>
+                    </Suspense>
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-center p-4">
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest font-black">Official Oracle Archive</p>
+                  </div>
+                </div>
+
+                <div className="w-full flex flex-col gap-3">
+                  <Button
+                    onClick={() => void downloadWrapGraphic()}
+                    disabled={endingSimulation}
+                    className="h-14 w-full bg-white text-black hover:bg-white/90 rounded-none font-black uppercase tracking-tighter text-lg transition-all active:scale-[0.98]"
+                  >
+                    {endingSimulation ? <ClassicLoader size="sm" /> : (
+                      <>
+                        <Download className="mr-3 h-5 w-5" />
+                        Download PNG
+                      </>
+                    )}
+                  </Button>
+
+                  <Button
+                    asChild
+                    variant="ghost"
+                    className="h-12 w-full text-white/40 hover:text-white hover:bg-white/5 rounded-none font-bold uppercase tracking-widest text-xs transition-all"
+                  >
+                    <Link href="/dashboard/all">
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      Create New Simulation
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <TutorialModal
         open={showTutorial}
         onOpenChange={setShowTutorial}
@@ -857,6 +1153,13 @@ function DashboardContent() {
           if (newSetup) setSetup(newSetup);
           setShowTutorial(false);
         }}
+      />
+
+      <SpriteEditModal
+        isOpen={isSpriteEditModalOpen}
+        onClose={() => setIsSpriteEditModalOpen(false)}
+        setup={setup}
+        onSetupUpdate={(updatedSetup) => setSetup(updatedSetup)}
       />
     </>
   );

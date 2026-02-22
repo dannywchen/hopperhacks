@@ -29,7 +29,7 @@ const careerPayloadSchema = z.object({
       resumeText: z.string().nullable().optional(),
       linkedinProfile: z
         .object({
-          source: z.literal("apify"),
+          source: z.enum(["apify", "resume"]),
           profileUrl: z.string(),
           scrapedAt: z.string(),
           fullName: z.string().optional(),
@@ -273,19 +273,19 @@ function toSnapshot(
   const now = new Date().toISOString();
   const linkedinProfile = payload.linkedinProfile
     ? {
-        source: "apify" as const,
-        profileUrl: payload.linkedinProfile.profileUrl,
-        scrapedAt: payload.linkedinProfile.scrapedAt,
-        ...(payload.linkedinProfile.fullName ? { fullName: payload.linkedinProfile.fullName } : {}),
-        ...(payload.linkedinProfile.headline ? { headline: payload.linkedinProfile.headline } : {}),
-        ...(payload.linkedinProfile.location ? { location: payload.linkedinProfile.location } : {}),
-        ...(payload.linkedinProfile.about ? { about: payload.linkedinProfile.about } : {}),
-        experiences: payload.linkedinProfile.experiences ?? [],
-        projects: payload.linkedinProfile.projects ?? [],
-        skills: payload.linkedinProfile.skills ?? [],
-        education: payload.linkedinProfile.education ?? [],
-        certifications: payload.linkedinProfile.certifications ?? [],
-      }
+      source: payload.linkedinProfile.source as "apify" | "resume",
+      profileUrl: payload.linkedinProfile.profileUrl,
+      scrapedAt: payload.linkedinProfile.scrapedAt,
+      ...(payload.linkedinProfile.fullName ? { fullName: payload.linkedinProfile.fullName } : {}),
+      ...(payload.linkedinProfile.headline ? { headline: payload.linkedinProfile.headline } : {}),
+      ...(payload.linkedinProfile.location ? { location: payload.linkedinProfile.location } : {}),
+      ...(payload.linkedinProfile.about ? { about: payload.linkedinProfile.about } : {}),
+      experiences: payload.linkedinProfile.experiences ?? [],
+      projects: payload.linkedinProfile.projects ?? [],
+      skills: payload.linkedinProfile.skills ?? [],
+      education: payload.linkedinProfile.education ?? [],
+      certifications: payload.linkedinProfile.certifications ?? [],
+    }
     : undefined;
 
   return {
@@ -431,10 +431,7 @@ export async function POST(req: Request) {
     stage = "bootstrap_user";
     await ensureUserBootstrap(user.id);
     stage = "save_user_setup";
-    await saveUserSetup(user.id, setup, {
-      completedOnboarding: true,
-      completedAt: now,
-    });
+    await saveUserSetup(user.id, setup);
 
     let memoryWriteWarning: string | null = null;
     if (snapshot) {
