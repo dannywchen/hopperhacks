@@ -839,7 +839,7 @@ function DashboardContent() {
                             <Sparkles className="h-4 w-4" />
                             {activeRun.mode === "auto_future"
                               ? "Auto mode generated this timeline from your memory context."
-                              : "This simulation is ended. Start a new run to continue."}
+                              : "Scroll down to see simulation summary. Start a new run in \"All games\" tab."}
                           </p>
                         </div>
                       )}
