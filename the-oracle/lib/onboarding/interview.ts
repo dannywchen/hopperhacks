@@ -19,6 +19,7 @@ export const interviewRequestSchema = z.object({
   resumeText: z.string().nullable().optional(),
   lifeStory: z.string().nullable().optional(),
   targetRole: z.string().nullable().optional(),
+  simulationMode: z.enum(["auto_future", "manual_step"]).optional(),
   simulationIntents: z.array(z.string()).optional(),
   messages: z
     .array(

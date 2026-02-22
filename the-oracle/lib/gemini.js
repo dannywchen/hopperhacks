@@ -1,43 +1,86 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
+const GEMINI_MODEL = 'gemini-3-flash-preview'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-
-// Gemini 2.0 Flash — fast and cost efficient
-export const gemini = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' })
-
-/**
- * Send a prompt to Gemini and get a text response back
- * @param {string} prompt - the full prompt string
- * @returns {string} - Gemini's response text
- */
-export async function askGemini(prompt) {
-  const result = await gemini.generateContent(prompt)
-  const response = await result.response
-  return response.text()
+function extractText(payload) {
+  return payload?.candidates?.[0]?.content?.parts
+    ?.map((part) => part?.text ?? '')
+    .join('')
+    .trim()
 }
 
-/**
- * Send a prompt and get a parsed JSON response back
- * Use this when you need structured data (decisions, inferences etc.)
- * @param {string} prompt - the full prompt string
- * @returns {object} - parsed JSON object
- */
+function extractJsonText(text) {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (fenced?.[1]) return fenced[1].trim()
+  const firstBrace = text.indexOf('{')
+  const lastBrace = text.lastIndexOf('}')
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return text.slice(firstBrace, lastBrace + 1).trim()
+  }
+  return text.trim()
+}
+
+async function requestGemini(prompt, { responseMimeType = 'text/plain', maxOutputTokens = 1600 } = {}) {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    throw new Error('Missing GEMINI_API_KEY.')
+  }
+
+  const response = await fetch(
+    `${GEMINI_API_BASE}/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.35,
+          maxOutputTokens,
+          responseMimeType,
+        },
+      }),
+    }
+  )
+
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    const detail = payload?.error?.message ?? `Gemini request failed (${response.status}).`
+    throw new Error(detail)
+  }
+  const text = extractText(payload)
+  if (!text) {
+    throw new Error('Gemini returned an empty response.')
+  }
+  return text
+}
+
+export async function askGemini(prompt) {
+  return requestGemini(prompt, {
+    responseMimeType: 'text/plain',
+    maxOutputTokens: 1800,
+  })
+}
+
 export async function askGeminiJSON(prompt) {
   const fullPrompt = `
 ${prompt}
 
-IMPORTANT: Respond with valid JSON only. No markdown, no backticks, no explanation. Just the raw JSON object.
+IMPORTANT: Respond with valid JSON only. No markdown, no backticks, no explanation.
   `.trim()
 
-  const result   = await gemini.generateContent(fullPrompt)
-  const response = await result.response
-  const text     = response.text()
+  const text = await requestGemini(fullPrompt, {
+    responseMimeType: 'application/json',
+    maxOutputTokens: 1800,
+  })
 
   try {
     return JSON.parse(text)
   } catch {
-    // Strip any accidental markdown fences and retry
-    const cleaned = text.replace(/```json|```/g, '').trim()
+    const cleaned = extractJsonText(text)
     return JSON.parse(cleaned)
   }
 }

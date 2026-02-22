@@ -37,8 +37,7 @@ import { getSupabase } from "@/lib/supabase";
 import onboardingDesign from "@/design.json";
 import {
   INTERVIEW_DOMAINS,
-  SIMULATION_HORIZON_OPTIONS,
-  SIMULATION_INTENT_OPTIONS,
+  SIMULATION_MODE_OPTIONS,
 } from "@/lib/onboarding/config";
 import type {
   OnboardingAvatar,
@@ -47,7 +46,7 @@ import type {
   OnboardingInterviewMessage,
   OnboardingLinkedinProfile,
   SimulationHorizonPreset,
-  SimulationIntent,
+  SimulationMode,
   UserSetup,
 } from "@/lib/types";
 
@@ -150,6 +149,34 @@ type SpriteParts = {
 };
 
 type AvatarTab = "hair" | "clothes" | "head";
+
+const SIMULATION_MODE_DETAILS: Record<
+  SimulationMode,
+  {
+    kicker: string;
+    bullets: string[];
+    horizonPreset: SimulationHorizonPreset;
+  }
+> = {
+  auto_future: {
+    kicker: "Auto Future Forecast",
+    horizonPreset: "10_years",
+    bullets: [
+      "AI agents use your full memory + context to imitate how you would likely behave.",
+      "The system auto-generates a long timeline with many nodes and projected life changes.",
+      "Great for quickly seeing a broad 10-year style outlook and likely outcomes.",
+    ],
+  },
+  manual_step: {
+    kicker: "Manual Story Mode",
+    horizonPreset: "1_year",
+    bullets: [
+      "Simulation starts from right now and advances action-by-action, day-by-day.",
+      "Each step gives 3 suggested actions, plus you can write your own custom action.",
+      "Storyline and metrics update at every node so you can actively steer your future path.",
+    ],
+  },
+};
 
 const AVATAR_TABS: Array<{
   id: AvatarTab;
@@ -872,10 +899,8 @@ export function OnboardingWizard() {
   const [interviewLoading, setInterviewLoading] = useState(false);
   const [interviewStarted, setInterviewStarted] = useState(false);
   const [simHorizonPreset, setSimHorizonPreset] =
-    useState<SimulationHorizonPreset>("10_years");
-  const [simIntents, setSimIntents] =
-    useState<SimulationIntent[]>(["future_timeline"]);
-  const [targetOutcome, setTargetOutcome] = useState("");
+    useState<SimulationHorizonPreset>(SIMULATION_MODE_DETAILS.manual_step.horizonPreset);
+  const [simMode, setSimMode] = useState<SimulationMode>("manual_step");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -1209,13 +1234,32 @@ export function OnboardingWizard() {
     async function verifySession() {
       const first = await supabase.auth.getSession();
       if (cancelled) return;
-      if (first.data.session) return;
+      let session = first.data.session;
 
-      await new Promise((resolve) => window.setTimeout(resolve, 250));
-      const second = await supabase.auth.getSession();
-      if (!cancelled && !second.data.session) {
-        router.replace(`/login?next=${encodeURIComponent("/onboarding")}`);
+      if (!session) {
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+        const second = await supabase.auth.getSession();
+        if (cancelled) return;
+        session = second.data.session;
       }
+
+      if (!session) {
+        router.replace(`/login?next=${encodeURIComponent("/onboarding")}`);
+        return;
+      }
+
+      try {
+        const status = await fetchJson<{ completedOnboarding: boolean }>(
+          "/api/user/onboarding-status",
+          {
+            cache: "no-store",
+            timeoutMs: 8_000,
+          },
+        );
+        if (!cancelled && status.completedOnboarding) {
+          router.replace("/dashboard");
+        }
+      } catch {}
     }
 
     void verifySession();
@@ -1422,7 +1466,7 @@ export function OnboardingWizard() {
         body: JSON.stringify({
           resumeText: onboardingResumeText || null,
           lifeStory: conversationLifeStory || lifeStory || null,
-          simulationIntents: simIntents,
+          simulationMode: simMode,
           messages,
           previousReflections: interviewReflections,
         }),
@@ -1445,7 +1489,7 @@ export function OnboardingWizard() {
     lifeStory,
     onboardingResumeText,
     router,
-    simIntents,
+    simMode,
   ]);
 
   useEffect(() => {
@@ -1599,16 +1643,15 @@ export function OnboardingWizard() {
     setError(null);
   }
 
-  function selectIntent(intent: SimulationIntent) {
-    setSimIntents([intent]);
+  function selectSimulationMode(mode: SimulationMode) {
+    setSimMode(mode);
+    setSimHorizonPreset(SIMULATION_MODE_DETAILS[mode].horizonPreset);
   }
 
   async function finalizeOnboarding() {
     setSaving(true);
     setError(null);
     try {
-      const normalizedIntents =
-        simIntents.length > 0 ? [simIntents[0]] : ["future_timeline"];
       const result = await fetchJson<{
         setup: UserSetup;
         notes?: string[];
@@ -1625,9 +1668,8 @@ export function OnboardingWizard() {
             lifeStory: lifeStory || null,
             interviewMessages,
             reflections: interviewReflections,
+            simulationMode: simMode,
             simulationHorizonPreset: simHorizonPreset,
-            simulationIntents: normalizedIntents,
-            targetOutcome: targetOutcome.trim() || null,
           },
         }),
         timeoutMs: 120_000,
@@ -2352,74 +2394,45 @@ export function OnboardingWizard() {
                     </div>
                   </div>
 
-                  <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr_1fr]">
-                    <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                      <p className="text-sm font-medium text-zinc-100">Choose horizon</p>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                        {SIMULATION_HORIZON_OPTIONS.map((option) => (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => setSimHorizonPreset(option.id)}
-                            className={`rounded-xl px-3 py-3 text-left transition ${
-                              simHorizonPreset === option.id
-                                ? "bg-zinc-100 text-zinc-950 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7)]"
-                                : "bg-zinc-900/90 text-zinc-300 hover:bg-zinc-800"
+                  <div className="mt-6 grid gap-7 md:grid-cols-2 md:gap-12">
+                    {SIMULATION_MODE_OPTIONS.map((option) => {
+                      const details = SIMULATION_MODE_DETAILS[option.id];
+                      const selected = simMode === option.id;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => selectSimulationMode(option.id)}
+                          className={`arcane-panel onboarding-path-card group relative flex min-h-[19rem] flex-col overflow-hidden rounded-3xl p-6 text-left transition md:min-h-[21rem] md:p-7 ${
+                            selected
+                              ? "arcane-panel-outline-fat bg-[linear-gradient(180deg,rgba(22,36,64,0.95),rgba(10,16,30,0.96))] shadow-[0_0_0_2px_rgba(168,193,255,0.38),0_18px_36px_rgba(0,0,0,0.42)]"
+                              : "arcane-panel-outline-thin bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.95] hover:opacity-100"
+                          }`}
+                          aria-pressed={selected}
+                        >
+                          {selected ? (
+                            <span className="absolute right-3 top-3 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-900">
+                              Selected
+                            </span>
+                          ) : null}
+                          <p
+                            className={`arcane-kicker text-[10px] ${
+                              selected ? "text-blue-200/90" : "text-zinc-400"
                             }`}
                           >
-                            <p className="text-sm font-medium">{option.label}</p>
-                            <p
-                              className={`mt-1 text-xs ${
-                                simHorizonPreset === option.id
-                                  ? "text-zinc-700"
-                                  : "text-zinc-400"
-                              }`}
-                            >
-                              {option.description}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                      <p className="text-sm font-medium text-zinc-100">Simulation mode</p>
-                      <div className="mt-3 grid gap-2">
-                        {SIMULATION_INTENT_OPTIONS.map((option) => (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => selectIntent(option.id)}
-                            className={`rounded-xl px-3 py-3 text-left transition ${
-                              simIntents.includes(option.id)
-                                ? "bg-zinc-100 text-zinc-950 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7)]"
-                                : "bg-zinc-900/90 text-zinc-300 hover:bg-zinc-800"
-                            }`}
-                          >
-                            <p className="text-sm font-medium">{option.label}</p>
-                            <p
-                              className={`mt-1 text-xs ${
-                                simIntents.includes(option.id)
-                                  ? "text-zinc-700"
-                                  : "text-zinc-400"
-                              }`}
-                            >
-                              {option.description}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                    <p className="text-sm font-medium text-zinc-100">Target outcome (optional)</p>
-                    <Textarea
-                      value={targetOutcome}
-                      onChange={(event) => setTargetOutcome(event.target.value)}
-                      placeholder="What would happen if I did X? What would success look like?"
-                      className="mt-3 min-h-[92px] rounded-xl border-0 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-500 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] focus-visible:ring-0 focus-visible:ring-offset-0"
-                    />
+                            {details.kicker}
+                          </p>
+                          <p className="arcane-display-title mt-1 text-2xl font-semibold leading-tight text-zinc-100 md:text-[1.75rem]">
+                            {option.label}
+                          </p>
+                          <ul className="mt-3 max-w-[38ch] list-disc space-y-1.5 pl-5 pr-6 text-[0.93rem] leading-relaxed text-zinc-300">
+                            {details.bullets.map((bullet) => (
+                              <li key={bullet}>{bullet}</li>
+                            ))}
+                          </ul>
+                        </button>
+                      );
+                    })}
                   </div>
 
                   <div className="mt-6 flex justify-end">

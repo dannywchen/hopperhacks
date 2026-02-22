@@ -4,10 +4,14 @@ import { horizonPresetToYears } from "@/lib/onboarding/config";
 import { estimateSimulationAccuracy, reflectionCoverageMap } from "@/lib/onboarding/interview";
 import { getAuthUser } from "@/lib/auth";
 import { ensureUserBootstrap, saveAgentMemory, saveUserSetup } from "@/lib/game-db";
+import {
+  ensureInitialSimulation,
+  inferSimulationDefaultsFromOnboarding,
+} from "@/lib/simulation-engine";
 import type {
   OnboardingInterviewDomainId,
   OnboardingSnapshot,
-  SimulationIntent,
+  SimulationMode,
   UserFactor,
   UserSetup,
 } from "@/lib/types";
@@ -82,6 +86,7 @@ const careerPayloadSchema = z.object({
       simulationHorizonPreset: z
         .enum(["whole_life", "10_years", "1_year", "1_week"])
         .optional(),
+      simulationMode: z.enum(["auto_future", "manual_step"]).optional(),
       simulationIntents: z
         .array(
           z.enum([
@@ -100,32 +105,22 @@ const careerPayloadSchema = z.object({
     .optional(),
 });
 
-const LEGACY_INTENT_MAP: Record<string, SimulationIntent> = {
-  fun: "future_timeline",
-  planning: "future_timeline",
-  what_if: "career_path",
-  continue_path: "future_timeline",
-  achieve_goal: "career_path",
-};
+const LEGACY_MANUAL_INTENTS = new Set([
+  "career_path",
+  "what_if",
+  "achieve_goal",
+]);
 
-function normalizeSimulationIntents(
-  intents: Array<
-    | SimulationIntent
-    | "fun"
-    | "planning"
-    | "what_if"
-    | "continue_path"
-    | "achieve_goal"
-  >,
-): SimulationIntent[] {
-  if (intents.length === 0) return ["future_timeline"];
-  const mapped = intents
-    .map((intent) => LEGACY_INTENT_MAP[intent] ?? intent)
-    .filter((intent): intent is SimulationIntent =>
-      intent === "career_path" || intent === "future_timeline",
-    );
-  if (mapped.length === 0) return ["future_timeline"];
-  return [mapped[0]];
+function inferSimulationMode(params: {
+  explicitMode?: SimulationMode;
+  legacyIntents?: string[] | undefined;
+}): SimulationMode {
+  if (params.explicitMode) return params.explicitMode;
+  const intents = params.legacyIntents ?? [];
+  if (intents.some((intent) => LEGACY_MANUAL_INTENTS.has(intent))) {
+    return "manual_step";
+  }
+  return "auto_future";
 }
 
 function cleanText(value: unknown, maxChars = 1600) {
@@ -186,15 +181,15 @@ function coverageAverage(reflections: OnboardingSnapshot["reflections"]) {
 function baselineFactors(snapshot: OnboardingSnapshot): UserFactor[] {
   const coverage = coverageAverage(snapshot.reflections);
   const qualityBoost = Math.min(20, Math.round(snapshot.lifeStory.length / 800));
-  const timelineBoost = snapshot.simulationIntents.includes("future_timeline") ? 5 : 0;
+  const modeBoost = snapshot.simulationMode === "manual_step" ? 4 : 0;
   const base = Math.max(35, Math.min(88, 42 + Math.round(coverage * 0.35) + qualityBoost));
 
   const moneyBase = Math.max(
     25,
-    Math.min(90, base + (snapshot.simulationIntents.includes("career_path") ? 6 : 0)),
+    Math.min(90, base + (snapshot.simulationMode === "manual_step" ? 5 : 2)),
   );
-  const healthBase = Math.max(20, Math.min(90, base - 4));
-  const relationshipsBase = Math.max(20, Math.min(90, base + timelineBoost));
+  const healthBase = Math.max(20, Math.min(90, base - (snapshot.simulationMode === "auto_future" ? 2 : 4)));
+  const relationshipsBase = Math.max(20, Math.min(90, base + modeBoost));
 
   return [
     {
@@ -314,8 +309,11 @@ function toSnapshot(
       confidence: reflection.confidence,
       evidence: (reflection.evidence ?? []).map((entry) => cleanText(entry, 220)).filter(Boolean),
     })),
+    simulationMode: inferSimulationMode({
+      explicitMode: payload.simulationMode,
+      legacyIntents: payload.simulationIntents,
+    }),
     simulationHorizonPreset: payload.simulationHorizonPreset ?? "10_years",
-    simulationIntents: normalizeSimulationIntents(payload.simulationIntents ?? []),
     ...(cleanText(payload.targetOutcome, 1200)
       ? { targetOutcome: cleanText(payload.targetOutcome, 1200) }
       : {}),
@@ -323,19 +321,23 @@ function toSnapshot(
 }
 
 export async function POST(req: Request) {
+  let stage = "parse_request";
   try {
     const raw = await req.json().catch(() => ({}));
+    stage = "validate_payload";
     const parsed = careerPayloadSchema.safeParse(raw);
 
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid onboarding payload." }, { status: 400 });
     }
 
+    stage = "authenticate_user";
     const user = await getAuthUser(req);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    stage = "build_setup_payload";
     const { text = "", onboarding } = parsed.data;
     const snapshot = toSnapshot(onboarding);
     const now = new Date().toISOString();
@@ -353,10 +355,14 @@ export async function POST(req: Request) {
     });
 
     const location = cleanText(onboarding?.linkedinProfile?.location, 120) || undefined;
+    const simulationMode = inferSimulationMode({
+      explicitMode: onboarding?.simulationMode,
+      legacyIntents: onboarding?.simulationIntents as string[] | undefined,
+    });
     const horizonYears = horizonPresetToYears(onboarding?.simulationHorizonPreset ?? "10_years");
 
     const setup: UserSetup = {
-      version: "v3",
+      version: "v4",
       createdAt: now,
       updatedAt: now,
       profile: {
@@ -408,22 +414,29 @@ export async function POST(req: Request) {
           lifeStory: cleanText(text, 2000),
           interviewMessages: [],
           reflections: [],
+          simulationMode,
           simulationHorizonPreset: "10_years",
-          simulationIntents: ["future_timeline"],
         },
       ),
       lovedOnes: [],
       preferences: {
         horizonYears,
+        simulationMode,
         includeLongevity: true,
         includeLovedOnesLongevity: false,
       },
       ...(snapshot ? { onboarding: snapshot } : {}),
     };
 
+    stage = "bootstrap_user";
     await ensureUserBootstrap(user.id);
-    await saveUserSetup(user.id, setup);
+    stage = "save_user_setup";
+    await saveUserSetup(user.id, setup, {
+      completedOnboarding: true,
+      completedAt: now,
+    });
 
+    let memoryWriteWarning: string | null = null;
     if (snapshot) {
       const coverageMap = reflectionCoverageMap(snapshot.reflections);
       const accuracy = estimateSimulationAccuracy({
@@ -440,8 +453,8 @@ export async function POST(req: Request) {
             updatedAt: now,
             interviewMessageCount: snapshot.interviewMessages.length,
             reflectionCount: snapshot.reflections.length,
+            simulationMode: snapshot.simulationMode,
             simulationHorizonPreset: snapshot.simulationHorizonPreset,
-            simulationIntents: snapshot.simulationIntents,
             lifeStory: cleanText(snapshot.lifeStory, 2400),
             reflections: snapshot.reflections.slice(0, 8),
           }),
@@ -500,24 +513,72 @@ export async function POST(req: Request) {
         );
       }
 
-      await Promise.all(writes);
+      stage = "save_agent_memory";
+      try {
+        await Promise.all(writes);
+      } catch (memoryError: unknown) {
+        console.error("Unable to save onboarding memory snapshot:", memoryError);
+        memoryWriteWarning =
+          memoryError instanceof Error
+            ? memoryError.message
+            : "Memory snapshot write failed.";
+      }
+    }
+
+    stage = "provision_initial_simulation";
+    const defaults = inferSimulationDefaultsFromOnboarding(snapshot);
+    let initialSimulationId: string | null = null;
+    let simulationProvisioningWarning: string | null = null;
+
+    try {
+      const initialSimulation = await ensureInitialSimulation({
+        profileId: user.id,
+        setup,
+      });
+      initialSimulationId = initialSimulation.run.id;
+    } catch (simulationError: unknown) {
+      console.error("Unable to provision initial simulation during onboarding:", simulationError);
+      simulationProvisioningWarning =
+        simulationError instanceof Error
+          ? simulationError.message
+          : "Simulation provisioning failed.";
+    }
+
+    const notes = [
+      "Generated baseline setup from onboarding intake.",
+      initialSimulationId
+        ? "Created your first simulation run from onboarding context."
+        : "Profile setup saved. Create your first simulation from the dashboard.",
+    ];
+    if (memoryWriteWarning) {
+      notes.push(
+        "Onboarding memory write had a compatibility warning. Core onboarding data is still saved.",
+      );
+    }
+    if (simulationProvisioningWarning) {
+      notes.push(
+        "Simulation provisioning is not ready yet. Run the latest Supabase migration, then create a simulation.",
+      );
     }
 
     return NextResponse.json({
       setup,
-      notes: [
-        "Generated baseline setup from onboarding intake.",
-        "Run the simulator to refine life metrics and branching outcomes.",
-      ],
+      notes,
       meta: {
-        mode: "heuristic",
+        mode: defaults.mode,
         horizonYears,
+        simulationId: initialSimulationId,
+        memoryWriteWarning,
+        simulationProvisioningWarning,
       },
     });
   } catch (error: unknown) {
+    console.error(`[api/intake/career] failed at stage=${stage}`, error);
+    const message = errorMessage(error);
     return NextResponse.json(
       {
-        error: errorMessage(error),
+        error: `${message} (stage: ${stage})`,
+        stage,
       },
       { status: 500 },
     );

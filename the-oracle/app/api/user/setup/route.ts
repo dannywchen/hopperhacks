@@ -32,46 +32,59 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  let stage = "authenticate_user";
   const user = await getAuthUser(req);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
+    stage = "parse_payload";
     const payload = await req.json().catch(() => null);
     const parsed = saveSetupSchema.safeParse(payload);
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid setup payload." }, { status: 400 });
     }
 
+    stage = "bootstrap_user";
     await ensureUserBootstrap(user.id);
+    stage = "save_user_setup";
     await saveUserSetup(user.id, parsed.data.setup);
 
-    await saveAgentMemory({
-      profile_id: user.id,
-      category: "profile",
-      key: "user_setup_latest",
-      content: JSON.stringify({
-        updatedAt: new Date().toISOString(),
-        version:
-          typeof parsed.data.setup.version === "string"
-            ? parsed.data.setup.version
-            : null,
-        profileName:
-          typeof parsed.data.setup.profile === "object" &&
-          parsed.data.setup.profile &&
-          "name" in parsed.data.setup.profile
-            ? (parsed.data.setup.profile as Record<string, unknown>).name ?? null
-            : null,
-      }),
-      importance: 94,
-    });
+    let memoryWarning: string | null = null;
+    stage = "save_memory";
+    try {
+      await saveAgentMemory({
+        profile_id: user.id,
+        category: "profile",
+        key: "user_setup_latest",
+        content: JSON.stringify({
+          updatedAt: new Date().toISOString(),
+          version:
+            typeof parsed.data.setup.version === "string"
+              ? parsed.data.setup.version
+              : null,
+          profileName:
+            typeof parsed.data.setup.profile === "object" &&
+            parsed.data.setup.profile &&
+            "name" in parsed.data.setup.profile
+              ? (parsed.data.setup.profile as Record<string, unknown>).name ?? null
+              : null,
+        }),
+        importance: 94,
+      });
+    } catch (memoryError: unknown) {
+      memoryWarning =
+        memoryError instanceof Error ? memoryError.message : "Failed to save setup memory.";
+      console.error(`[api/user/setup] memory warning`, memoryError);
+    }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, memoryWarning });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unable to save setup.";
+    console.error(`[api/user/setup] failed at stage=${stage}`, error);
     return NextResponse.json(
-      { error: message },
+      { error: `${message} (stage: ${stage})`, stage },
       { status: 500 },
     );
   }

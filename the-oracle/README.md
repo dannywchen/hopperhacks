@@ -17,8 +17,9 @@ cp .env.example .env.local
 3. Run the Supabase migration in your Supabase SQL editor:
 
 ```sql
--- Run this file:
+-- Run these files in order:
 -- supabase/migrations/202602220001_user_bootstrap_and_context.sql
+-- supabase/migrations/202602220002_simulation_modes_and_runs.sql
 ```
 
 4. Start the app:
@@ -34,6 +35,7 @@ npm run dev
 - LinkedIn ingest memory (`onboarding_linkedin_latest`).
 - Interview progress and turn-by-turn memory (`onboarding_interview_*`).
 - Final onboarding setup payload (`user_setups.setup_json`).
+- Simulation runs and timeline nodes (`simulation_runs`, `simulation_nodes`).
 
 ## Important backend routes
 

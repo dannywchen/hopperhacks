@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -34,15 +34,63 @@ function formatAuthErrorMessage(error: unknown, isSignUp: boolean) {
   return message;
 }
 
+async function redirectAfterAuth(token: string) {
+  await fetch("/api/user/bootstrap", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }).catch(() => null);
+
+  try {
+    const response = await fetch("/api/user/onboarding-status", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      window.location.href = "/onboarding";
+      return;
+    }
+    const payload = (await response.json()) as { completedOnboarding?: boolean };
+    window.location.href = payload.completedOnboarding ? "/dashboard" : "/onboarding";
+  } catch {
+    window.location.href = "/onboarding";
+  }
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function verifySession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (session?.access_token) {
+        await redirectAfterAuth(session.access_token);
+        return;
+      }
+      setCheckingSession(false);
+    }
+
+    void verifySession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (checkingSession) return;
     setLoading(true);
     setError("");
 
@@ -62,13 +110,7 @@ export default function LoginPage() {
       null;
 
     if (token) {
-      await fetch("/api/user/bootstrap", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }).catch(() => null);
-      window.location.href = "/onboarding";
+      await redirectAfterAuth(token);
       return;
     }
 
@@ -111,10 +153,10 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || checkingSession}
             className="w-full rounded-full bg-white px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-black transition hover:scale-105 disabled:opacity-50"
           >
-            {loading ? "..." : isSignUp ? "Create Account" : "Enter the Oracle"}
+            {loading || checkingSession ? "..." : isSignUp ? "Create Account" : "Enter the Oracle"}
           </button>
         </form>
 

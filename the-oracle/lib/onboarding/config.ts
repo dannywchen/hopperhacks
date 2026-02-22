@@ -1,7 +1,7 @@
 import type {
   OnboardingInterviewDomainId,
   SimulationHorizonPreset,
-  SimulationIntent,
+  SimulationMode,
 } from "@/lib/types";
 
 export type InterviewDomainDefinition = {
@@ -366,22 +366,22 @@ export const SIMULATION_HORIZON_OPTIONS: Array<{
   },
 ];
 
-export const SIMULATION_INTENT_OPTIONS: Array<{
-  id: SimulationIntent;
+export const SIMULATION_MODE_OPTIONS: Array<{
+  id: SimulationMode;
   label: string;
   description: string;
 }> = [
   {
-    id: "career_path",
-    label: "Career simulation path",
+    id: "auto_future",
+    label: "Time Into The Future",
     description:
-      "Use your current profile context and simulate how you may do in a selected career path.",
+      "Auto-generate a long timeline of likely future outcomes using your full memory and interview context.",
   },
   {
-    id: "future_timeline",
-    label: "Time into the future",
+    id: "manual_step",
+    label: "Predict Your Future Manually",
     description:
-      "Project your future from your current profile at a chosen time horizon like 1 year or 10 years.",
+      "Play story mode from right now, picking one of 3 options or entering your own action every step.",
   },
 ];
 

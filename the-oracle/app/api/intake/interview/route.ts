@@ -289,6 +289,7 @@ function assessLatestAnswer(messages: OnboardingInterviewMessage[]): LatestAnswe
 async function generateInterviewTurnWithGemini(input: {
   resumeText?: string | null;
   lifeStory?: string | null;
+  simulationMode?: "auto_future" | "manual_step";
   simulationIntents?: string[];
   messages: OnboardingInterviewMessage[];
   previousReflections: OnboardingDomainReflection[];
@@ -342,6 +343,9 @@ async function generateInterviewTurnWithGemini(input: {
     "",
     "Simulation intents:",
     JSON.stringify(input.simulationIntents ?? []),
+    "",
+    "Simulation mode:",
+    input.simulationMode ?? "manual_step",
     "",
     "Previous reflections JSON:",
     JSON.stringify(input.previousReflections ?? []),
@@ -538,6 +542,7 @@ export async function POST(req: Request) {
         seedTurn = await generateInterviewTurnWithGemini({
           resumeText: body.resumeText,
           lifeStory: body.lifeStory,
+          simulationMode: body.simulationMode,
           simulationIntents: body.simulationIntents,
           messages: [seedMessage],
           previousReflections,
@@ -571,6 +576,7 @@ export async function POST(req: Request) {
       turn = await generateInterviewTurnWithGemini({
         resumeText: body.resumeText,
         lifeStory: body.lifeStory,
+        simulationMode: body.simulationMode,
         simulationIntents: body.simulationIntents,
         messages,
         previousReflections,

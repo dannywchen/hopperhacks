@@ -3,6 +3,7 @@
 import type { LovedOne, UserSetup } from "@/lib/types";
 
 const STORAGE_KEY_V3 = "deep-sim.setup.v3";
+const STORAGE_KEY_V4 = "deep-sim.setup.v4";
 const CORE_PARENTS: LovedOne[] = [
   {
     id: "parent_mum",
@@ -21,6 +22,15 @@ const CORE_PARENTS: LovedOne[] = [
     typicalHoursPerMonth: 6,
   },
 ];
+
+type LegacyUserSetupV3 = Omit<UserSetup, "version" | "preferences"> & {
+  version: "v3";
+  preferences: {
+    horizonYears: number;
+    includeLongevity: boolean;
+    includeLovedOnesLongevity: boolean;
+  };
+};
 
 function safeParseJson<T>(value: string | null): T | null {
   if (!value) return null;
@@ -74,8 +84,32 @@ function normalizeLovedOnes(lovedOnes: LovedOne[]): LovedOne[] {
 }
 
 export function loadSetup(): UserSetup | null {
-  const raw = globalThis?.localStorage?.getItem(STORAGE_KEY_V3) ?? null;
-  const parsed = safeParseJson<UserSetup>(raw);
+  const rawV4 = globalThis?.localStorage?.getItem(STORAGE_KEY_V4) ?? null;
+  const parsedV4 = safeParseJson<UserSetup>(rawV4);
+  if (parsedV4) {
+    if (parsedV4.version !== "v4") return null;
+    if (!parsedV4.profile || typeof parsedV4.profile !== "object") return null;
+    if (!parsedV4.model || parsedV4.model.version !== "career-v1") return null;
+    if (!parsedV4.model.variables || typeof parsedV4.model.variables !== "object") return null;
+    if (!Array.isArray(parsedV4.factors)) return null;
+    if (!Array.isArray(parsedV4.lovedOnes)) return null;
+    const normalizedLovedOnes = normalizeLovedOnes(parsedV4.lovedOnes);
+    const normalized: UserSetup = {
+      ...parsedV4,
+      lovedOnes: normalizedLovedOnes,
+      preferences: {
+        ...parsedV4.preferences,
+        simulationMode: parsedV4.preferences?.simulationMode ?? "manual_step",
+      },
+    };
+    if (JSON.stringify(normalized) !== JSON.stringify(parsedV4)) {
+      globalThis?.localStorage?.setItem(STORAGE_KEY_V4, JSON.stringify(normalized));
+    }
+    return normalized;
+  }
+
+  const rawV3 = globalThis?.localStorage?.getItem(STORAGE_KEY_V3) ?? null;
+  const parsed = safeParseJson<LegacyUserSetupV3>(rawV3);
   if (!parsed) return null;
   if (parsed.version !== "v3") return null;
   if (!parsed.profile || typeof parsed.profile !== "object") return null;
@@ -86,23 +120,32 @@ export function loadSetup(): UserSetup | null {
   const normalizedLovedOnes = normalizeLovedOnes(parsed.lovedOnes);
   const normalized: UserSetup = {
     ...parsed,
+    version: "v4",
     lovedOnes: normalizedLovedOnes,
+    preferences: {
+      ...parsed.preferences,
+      simulationMode: "manual_step",
+    },
   };
-  if (JSON.stringify(normalizedLovedOnes) !== JSON.stringify(parsed.lovedOnes)) {
-    globalThis?.localStorage?.setItem(STORAGE_KEY_V3, JSON.stringify(normalized));
-  }
+  globalThis?.localStorage?.setItem(STORAGE_KEY_V4, JSON.stringify(normalized));
   return normalized;
 }
 
 export function saveSetup(setup: UserSetup) {
   const normalized: UserSetup = {
     ...setup,
+    version: "v4",
     lovedOnes: normalizeLovedOnes(setup.lovedOnes ?? []),
+    preferences: {
+      ...setup.preferences,
+      simulationMode: setup.preferences?.simulationMode ?? "manual_step",
+    },
   };
-  globalThis?.localStorage?.setItem(STORAGE_KEY_V3, JSON.stringify(normalized));
+  globalThis?.localStorage?.setItem(STORAGE_KEY_V4, JSON.stringify(normalized));
 }
 
 export function clearSetup() {
+  globalThis?.localStorage?.removeItem(STORAGE_KEY_V4);
   globalThis?.localStorage?.removeItem(STORAGE_KEY_V3);
 }
 

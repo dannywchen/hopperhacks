@@ -131,6 +131,8 @@ export type SimulationHorizonPreset =
   | "1_year"
   | "1_week";
 
+export type SimulationMode = "auto_future" | "manual_step";
+
 export type SimulationIntent =
   | "career_path"
   | "future_timeline";
@@ -144,8 +146,9 @@ export type OnboardingSnapshot = {
   lifeStory: string;
   interviewMessages: OnboardingInterviewMessage[];
   reflections: OnboardingDomainReflection[];
+  simulationMode: SimulationMode;
   simulationHorizonPreset: SimulationHorizonPreset;
-  simulationIntents: SimulationIntent[];
+  simulationIntents?: SimulationIntent[];
   targetOutcome?: string;
 };
 
@@ -204,7 +207,7 @@ export type SimulationModel = {
 };
 
 export type UserSetup = {
-  version: "v3";
+  version: "v4";
   createdAt: string;
   updatedAt: string;
   profile: {
@@ -219,10 +222,73 @@ export type UserSetup = {
   lovedOnes: LovedOne[];
   preferences: {
     horizonYears: number;
+    simulationMode: SimulationMode;
     includeLongevity: boolean;
     includeLovedOnesLongevity: boolean;
   };
   onboarding?: OnboardingSnapshot;
+};
+
+export type SimulationMetrics = {
+  health: number;
+  money: number;
+  career: number;
+  relationships: number;
+  fulfillment: number;
+  stress: number;
+  freeTime: number;
+  netWorth: number;
+  salary: number;
+  monthlyExpenses: number;
+  confidence: number;
+};
+
+export type SimulationActionType =
+  | "auto_projection"
+  | "manual_predefined"
+  | "manual_custom"
+  | "system";
+
+export type SimulationActionOption = {
+  id: string;
+  title: string;
+  description: string;
+  impactHint: string;
+  metricBias?: Partial<SimulationMetrics>;
+};
+
+export type SimulationRun = {
+  id: string;
+  profileId: string;
+  title: string;
+  mode: SimulationMode;
+  horizonPreset: SimulationHorizonPreset;
+  status: "active" | "ended";
+  currentDay: number;
+  startedAt: string;
+  endedAt?: string | null;
+  baselineMetrics: SimulationMetrics;
+  latestMetrics: SimulationMetrics;
+  summary?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SimulationNode = {
+  id: string;
+  simulationId: string;
+  profileId: string;
+  seq: number;
+  simulatedDate: string;
+  actionType: SimulationActionType;
+  actionLabel: string;
+  actionDetails?: string | null;
+  story: string;
+  changelog: string[];
+  metricDeltas: Partial<SimulationMetrics>;
+  metricsSnapshot: SimulationMetrics;
+  nextOptions: SimulationActionOption[];
+  createdAt: string;
 };
 
 export type FactorSnapshot = {
@@ -513,7 +579,7 @@ export type ScenarioFork = {
   states: WorldState[];
 };
 
-export type SimulationRun = {
+export type LegacySimulationRun = {
   id: string;
   createdAt: string;
   tick: TickUnit;
