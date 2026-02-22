@@ -66,13 +66,23 @@ export async function POST(req: Request) {
               : null,
           profileName:
             typeof parsed.data.setup.profile === "object" &&
-            parsed.data.setup.profile &&
-            "name" in parsed.data.setup.profile
+              parsed.data.setup.profile &&
+              "name" in parsed.data.setup.profile
               ? (parsed.data.setup.profile as Record<string, unknown>).name ?? null
               : null,
         }),
-        importance: 94,
       });
+
+      const lifeStory = (parsed.data.setup.onboarding as any)?.lifeStory;
+      if (typeof lifeStory === "string" && lifeStory.trim().length > 0) {
+        await saveAgentMemory({
+          profile_id: user.id,
+          category: "profile",
+          key: "profile_supplemental_story",
+          content: lifeStory.substring(0, 12000),
+          importance: 88,
+        });
+      }
     } catch (memoryError: unknown) {
       memoryWarning =
         memoryError instanceof Error ? memoryError.message : "Failed to save setup memory.";

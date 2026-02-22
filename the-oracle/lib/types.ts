@@ -50,15 +50,15 @@ export type LovedOne = {
   name: string;
   relation?: string;
   relationshipKind?:
-    | "mum"
-    | "dad"
-    | "parent"
-    | "partner"
-    | "child"
-    | "sibling"
-    | "friend"
-    | "mentor"
-    | "other";
+  | "mum"
+  | "dad"
+  | "parent"
+  | "partner"
+  | "child"
+  | "sibling"
+  | "friend"
+  | "mentor"
+  | "other";
   relationshipStatus?: "active" | "strained" | "estranged" | "deceased";
   age?: number;
   birthYear?: number;
@@ -178,28 +178,28 @@ type ModelVariableBase = {
 
 export type ModelVariable =
   | (ModelVariableBase & {
-      kind: "scalar";
-      value: number;
-      min?: number;
-      max?: number;
-    })
+    kind: "scalar";
+    value: number;
+    min?: number;
+    max?: number;
+  })
   | (ModelVariableBase & {
-      kind: "distribution";
-      p10: number;
-      p50: number;
-      p90: number;
-      min?: number;
-      max?: number;
-    })
+    kind: "distribution";
+    p10: number;
+    p50: number;
+    p90: number;
+    min?: number;
+    max?: number;
+  })
   | (ModelVariableBase & {
-      kind: "categorical";
-      value: string;
-      options?: string[];
-    })
+    kind: "categorical";
+    value: string;
+    options?: string[];
+  })
   | (ModelVariableBase & {
-      kind: "boolean";
-      value: boolean;
-    });
+    kind: "boolean";
+    value: boolean;
+  });
 
 export type SimulationModel = {
   version: "career-v1";
@@ -225,6 +225,7 @@ export type UserSetup = {
     simulationMode: SimulationMode;
     includeLongevity: boolean;
     includeLovedOnesLongevity: boolean;
+    hasCompletedTutorial?: boolean;
   };
   onboarding?: OnboardingSnapshot;
 };

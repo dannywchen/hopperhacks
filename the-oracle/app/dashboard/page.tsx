@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   BarChart3,
   Clock3,
@@ -17,6 +18,7 @@ import { getSupabase } from "@/lib/supabase";
 import { hydrateLocalSimulationStateFromSupabase } from "@/lib/client/cloud-state";
 import { loadSetup } from "@/lib/client/setup-store";
 import { PixelAvatar } from "@/components/shared/pixel-avatar";
+import { TutorialModal } from "@/components/tutorial/tutorial-modal";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import ClassicLoader from "@/components/ui/loader";
@@ -195,7 +197,10 @@ async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T>
   return payload as T;
 }
 
-export default function DashboardPage() {
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const forcedId = searchParams.get("id");
+
   const [setup, setSetup] = useState<UserSetup | null>(() => {
     if (typeof window === "undefined") return null;
     return loadSetup();
@@ -219,6 +224,7 @@ export default function DashboardPage() {
     return window.sessionStorage.getItem(ONBOARDING_DASHBOARD_TRANSITION_KEY) === "1";
   });
   const [fadeOutTransition, setFadeOutTransition] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
 
   const avatar = useMemo(() => asAvatar(setup), [setup]);
   const latestNode = nodes[nodes.length - 1] ?? null;
@@ -271,6 +277,13 @@ export default function DashboardPage() {
     };
   }, [showOnboardingTransition]);
 
+  useEffect(() => {
+    if (bootLoading || showOnboardingTransition) return;
+    if (setup && !setup.preferences?.hasCompletedTutorial) {
+      setShowTutorial(true);
+    }
+  }, [bootLoading, showOnboardingTransition, setup]);
+
   const bootDashboard = useCallback(async () => {
     setBootLoading(true);
     setError(null);
@@ -314,9 +327,6 @@ export default function DashboardPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void bootDashboard();
-  }, [bootDashboard]);
 
   const selectSimulation = useCallback(async (simulationId: string) => {
     if (!simulationId) return;
@@ -393,6 +403,14 @@ export default function DashboardPage() {
     },
     [activeRun, customAction],
   );
+
+  useEffect(() => {
+    if (forcedId) {
+      void selectSimulation(forcedId);
+    } else {
+      void bootDashboard();
+    }
+  }, [bootDashboard, forcedId, selectSimulation]);
 
   const endGame = useCallback(async () => {
     if (!activeRun || endingSimulation) return;
@@ -540,52 +558,9 @@ export default function DashboardPage() {
             <div className={styles.frameShell}>
               <div className={styles.mainGrid}>
                 <section className={styles.leftColumn}>
-                  <div className={styles.timelinePanel}>
+                  <div className={`${styles.timelinePanel} arcane-panel arcane-panel-outline-fat`}>
                     <div className={styles.timelineTopRow}>
                       <p className={styles.timelineLabel}>Timeline</p>
-                      <div className={styles.compactControls}>
-                        <select
-                          aria-label="Current simulation"
-                          value={activeRun?.id ?? ""}
-                          onChange={(event) => void selectSimulation(event.target.value)}
-                          className={styles.compactSelect}
-                        >
-                          {(simulations ?? []).map((simulation) => (
-                            <option key={simulation.id} value={simulation.id}>
-                              {simulation.title}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          aria-label="New simulation mode"
-                          value={createMode}
-                          onChange={(event) => setCreateMode(event.target.value as SimulationMode)}
-                          className={styles.compactMiniSelect}
-                        >
-                          <option value="manual_step">Manual</option>
-                          <option value="auto_future">Auto</option>
-                        </select>
-                        <select
-                          aria-label="New simulation horizon"
-                          value={createHorizonPreset}
-                          onChange={(event) => setCreateHorizonPreset(event.target.value as SimulationHorizonPreset)}
-                          className={styles.compactMiniSelect}
-                        >
-                          <option value="1_week">1w</option>
-                          <option value="1_year">1y</option>
-                          <option value="10_years">10y</option>
-                          <option value="whole_life">Life</option>
-                        </select>
-                        <Button
-                          type="button"
-                          onClick={() => void createSimulation()}
-                          disabled={creatingSimulation}
-                          className={styles.compactButton}
-                        >
-                          <PlusCircle className="h-4 w-4" />
-                          {creatingSimulation ? <ClassicLoader size="sm" /> : "New"}
-                        </Button>
-                      </div>
                     </div>
                     <p className={styles.timelineMeta}>
                       {activeRun.title} • {nodes.length} nodes • day {activeRun.currentDay}
@@ -734,37 +709,14 @@ export default function DashboardPage() {
             </div>
           ) : (
             <section className={styles.emptyState}>
-              <p>No simulation found yet. Create one to begin.</p>
+              <p>No active simulation found.</p>
               <div className={styles.emptyControls}>
-                <select
-                  aria-label="New simulation mode"
-                  value={createMode}
-                  onChange={(event) => setCreateMode(event.target.value as SimulationMode)}
-                  className={styles.compactMiniSelect}
-                >
-                  <option value="manual_step">Manual</option>
-                  <option value="auto_future">Auto</option>
-                </select>
-                <select
-                  aria-label="New simulation horizon"
-                  value={createHorizonPreset}
-                  onChange={(event) => setCreateHorizonPreset(event.target.value as SimulationHorizonPreset)}
-                  className={styles.compactMiniSelect}
-                >
-                  <option value="1_week">1w</option>
-                  <option value="1_year">1y</option>
-                  <option value="10_years">10y</option>
-                  <option value="whole_life">Life</option>
-                </select>
-                <Button
-                  type="button"
-                  onClick={() => void createSimulation()}
-                  disabled={creatingSimulation}
-                  className={styles.compactButton}
-                >
-                  <PlusCircle className="h-4 w-4" />
-                  {creatingSimulation ? <ClassicLoader size="sm" /> : "Create Simulation"}
-                </Button>
+                <Link href="/dashboard/all">
+                  <Button className={styles.compactButton}>
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    Go to All Simulations
+                  </Button>
+                </Link>
               </div>
             </section>
           )}
@@ -896,6 +848,24 @@ export default function DashboardPage() {
           />
         </div>
       ) : null}
+
+      <TutorialModal
+        open={showTutorial}
+        onOpenChange={setShowTutorial}
+        setup={setup}
+        onComplete={(newSetup) => {
+          if (newSetup) setSetup(newSetup);
+          setShowTutorial(false);
+        }}
+      />
     </>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<main className={styles.loadingShell}><ClassicLoader /></main>}>
+      <DashboardContent />
+    </Suspense>
   );
 }

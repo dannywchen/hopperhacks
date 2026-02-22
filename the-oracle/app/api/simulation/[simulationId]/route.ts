@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { getSimulationWithNodes } from "@/lib/simulation-engine";
+import { getSimulationWithNodes, updateSimulation } from "@/lib/simulation-engine";
 
 type RouteParams = {
   params: Promise<{ simulationId: string }>;
@@ -40,4 +40,34 @@ export async function GET(req: Request, context: RouteParams) {
     const status = message.includes("not found") ? 404 : 500;
     return NextResponse.json({ error: message }, { status });
   }
+}
+
+export async function PATCH(req: Request, context: RouteParams) {
+  const user = await getAuthUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const { simulationId } = await context.params;
+    const body = await req.json();
+    const result = await updateSimulation({
+      profileId: user.id,
+      simulationId,
+      updates: {
+        title: body.title,
+      },
+    });
+
+    return NextResponse.json(result);
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unable to update simulation." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PUT(req: Request, context: RouteParams) {
+  return PATCH(req, context);
 }

@@ -243,10 +243,10 @@ function parseNodeRow(row: NodeRow): SimulationNode {
     metricsSnapshot: simulationMetricsSchema.parse(row.metrics_snapshot),
     nextOptions: Array.isArray(row.next_options)
       ? row.next_options
-          .map((entry) => simulationActionOptionSchema.safeParse(entry))
-          .filter((entry) => entry.success)
-          .map((entry) => entry.data)
-          .slice(0, 3)
+        .map((entry) => simulationActionOptionSchema.safeParse(entry))
+        .filter((entry) => entry.success)
+        .map((entry) => entry.data)
+        .slice(0, 3)
       : [],
     createdAt: row.created_at,
   };
@@ -349,8 +349,8 @@ async function requestGeminiJson<T>(params: {
   if (!response.ok) return null;
   const payload = (await response.json().catch(() => null)) as
     | {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-      }
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    }
     | null;
   const text = payload?.candidates?.[0]?.content?.parts?.map((part) => part?.text ?? "").join("").trim();
   if (!text) return null;
@@ -1144,6 +1144,27 @@ export async function endSimulation(params: {
     nodes,
     wrap,
   };
+}
+
+export async function updateSimulation(params: {
+  profileId: string;
+  simulationId: string;
+  updates: { title?: string };
+}) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("simulation_runs")
+    .update({
+      title: params.updates.title,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", params.simulationId)
+    .eq("profile_id", params.profileId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return parseRunRow(data as RunRow);
 }
 
 export function inferSimulationDefaultsFromOnboarding(
