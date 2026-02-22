@@ -68,6 +68,7 @@ STRICT RULES FOR DELTAS:
 - Only include a key in deltas if it actually changes — omit unchanged ones
 - Do NOT add any other keys like happiness, health, career_xp or anything else
 - Respond with valid JSON only — no markdown, no backticks, no explanation
+- If a custom input is given and a value you need to determine is ambigous, use the average of said data.
 `.trim()
 
 
