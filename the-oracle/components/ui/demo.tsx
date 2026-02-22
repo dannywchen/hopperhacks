@@ -69,7 +69,7 @@ const Preview = () => {
           See how your life, money, career, relationships pan out in the next 1-10 years
         </p>
         <Link
-          href="/onboarding"
+          href="/login"
           className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-black transition hover:scale-105"
         >
           start now <ArrowRight className="h-3.5 w-3.5" />
