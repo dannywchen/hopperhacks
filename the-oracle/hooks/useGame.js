@@ -92,6 +92,22 @@ export function useGame() {
     }
   }, [])
 
+  const customInput = useCallback(async (input) => {
+    setAiLoading(true)
+    try {
+      const res = await authFetch('/ai/infer', {
+        method: 'POST',
+        body: JSON.stringify({ question: input, type: 'custom' }),
+      })
+      setInference(res)
+      return res
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setAiLoading(false)
+    }
+  }, [])
+
   const updateSettings = useCallback(async (settings) => {
     return authFetch('/api/game/settings', {
       method: 'POST',
@@ -118,5 +134,6 @@ export function useGame() {
     updateSettings,  // save game preferences
     loadEvents,      // fetch life events history
     loadMemory,      // fetch AI agent memories
+    customInput,
   }
 }

@@ -360,3 +360,37 @@ Respond with valid JSON only:
 }
   `.trim()
 }
+
+export function buildCustomInputPrompt({ state, memory, events, input }) {
+  return `
+You are a life simulation AI. A person has typed something freely about their life.
+Categorize it into one of these areas: career, finance, health, relationships, balance.
+Then treat it exactly like a normal life decision for that category.
+
+${formatPlayerStats(state)}
+
+WHAT YOU KNOW ABOUT THIS PERSON:
+${memory || 'No memory context yet.'}
+
+RECENT LIFE EVENTS:
+${formatLifeEvents(events)}
+
+WHAT THE PLAYER TYPED:
+"${input}"
+
+${DELTA_RULES}
+
+Respond with this exact JSON structure:
+{
+  "inference": "2-3 sentence insight about this situation given their specific data",
+  "decisions": [
+    { "title": "", "description": "", "outcome": "", "deltas": { "stress": 0, "net_worth": 0, "salary": 0 } },
+    { "title": "", "description": "", "outcome": "", "deltas": { "stress": 0, "net_worth": 0, "salary": 0 } },
+    { "title": "", "description": "", "outcome": "", "deltas": { "stress": 0, "net_worth": 0, "salary": 0 } }
+  ],
+  "memory_updates": [
+    { "category": "fact|preference|trait|goal|context", "key": "unique_key", "content": "", "importance": 5 }
+  ]
+}
+  `.trim()
+}

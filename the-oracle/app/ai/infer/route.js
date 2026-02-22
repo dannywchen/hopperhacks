@@ -45,7 +45,9 @@ export async function POST(request) {
     // Build the prompt based on type
     const prompt = type === 'summary'
       ? buildSummaryPrompt({ state, memory, events })
-      : buildInferencePrompt({ state, memory, events, question })
+      : type === 'custom'
+      ? buildCustomInputPrompt({ state, memory, events, input: question })
+      : buildInferencePrompt({ state, memory, events, question, category })
 
     // Ask Gemini
     const aiResponse = await askGeminiJSON(prompt)
