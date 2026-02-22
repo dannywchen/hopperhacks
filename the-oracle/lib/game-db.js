@@ -44,14 +44,14 @@ export async function applyStatDeltas(profileId, deltas, event) {
   const current = await loadGameState(profileId)
 
   const updated = {
-    age:       deltas.age !== undefined ? clamp(current.age + deltas.age) : current.age,
-    stress:    deltas.stress    !== undefined ? clamp(current.stress    + deltas.stress)    : current.stress,
-    expected_death_age: deltas.expected_death_age !== undefined ? current.expected_death_age + deltas.expected_death_age : current.expected_death_age,
-    health:    deltas.health    !== undefined ? clamp(current.health    + deltas.health)    : current.health,
-    free_time: deltas.free_time !== undefined ? clamp(current.free_time + deltas.free_time) : current.free_time,
-    net_worth: deltas.net_worth !== undefined ? current.net_worth + deltas.net_worth        : current.net_worth,
-    salary:    deltas.salary    !== undefined ? current.salary    + deltas.salary           : current.salary,
-    
+    stress:              deltas.stress              !== undefined ? clamp(current.stress    + deltas.stress)    : current.stress,
+    free_time:           deltas.free_time           !== undefined ? clamp(current.free_time + deltas.free_time) : current.free_time,
+    net_worth:           deltas.net_worth           !== undefined ? current.net_worth + deltas.net_worth        : current.net_worth,
+    salary:              deltas.salary              !== undefined ? current.salary    + deltas.salary           : current.salary,
+    age:                 deltas.age                 !== undefined ? current.age       + deltas.age              : current.age,
+    expected_death_age:  deltas.expected_death_age  !== undefined ? current.expected_death_age + deltas.expected_death_age : current.expected_death_age,
+    city:                deltas.city                !== undefined ? deltas.city                                 : current.city,
+    relationship_status: deltas.relationship_status !== undefined ? deltas.relationship_status                  : current.relationship_status,
   }
 
   await Promise.all([
