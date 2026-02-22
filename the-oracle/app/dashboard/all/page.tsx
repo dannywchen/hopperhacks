@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Press_Start_2P } from "next/font/google";
 import { Plus, Play, Edit2, Check, X } from "lucide-react";
@@ -49,10 +49,6 @@ export default function AllSimulationsPage() {
     const [newName, setNewName] = useState("");
     const [creating, setCreating] = useState(false);
     const [showCreateDialog, setShowCreateDialog] = useState(false);
-    const activeSimulations = useMemo(
-        () => simulations.filter((simulation) => simulation.status === "active"),
-        [simulations],
-    );
 
     const fetchSimulations = useCallback(async () => {
         setLoading(true);
@@ -145,39 +141,6 @@ export default function AllSimulationsPage() {
                         {error}
                     </div>
                 )}
-
-                <section className="mb-10 border border-white/10 bg-white/[0.02] p-6">
-                    <div className="flex flex-wrap items-center justify-between gap-4">
-                        <div>
-                            <p className="text-white text-xs uppercase tracking-[0.18em]">Active Simulations</p>
-                            <p className="mt-2 text-white/50 text-xs uppercase tracking-tight">
-                                Switch here, then dashboard opens the selected active run.
-                            </p>
-                        </div>
-                        <span className="text-[10px] uppercase tracking-[0.15em] text-white/40">
-                            {activeSimulations.length} active
-                        </span>
-                    </div>
-                    {activeSimulations.length > 0 ? (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                            {activeSimulations.map((sim) => (
-                                <button
-                                    key={sim.id}
-                                    type="button"
-                                    onClick={() => void playSimulation(sim.id)}
-                                    className="inline-flex items-center gap-2 border border-white/25 bg-black px-3 py-2 text-xs uppercase tracking-wide text-white transition-colors hover:border-white/55 hover:bg-white/5"
-                                >
-                                    <Play className="h-3.5 w-3.5" />
-                                    {sim.title}
-                                </button>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="mt-4 text-xs uppercase tracking-widest text-white/35">
-                            No active simulations right now.
-                        </p>
-                    )}
-                </section>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 border-l border-t border-white/10">
                     {simulations.map((sim: SimulationRun) => (

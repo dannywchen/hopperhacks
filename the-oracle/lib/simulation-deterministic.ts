@@ -24,6 +24,17 @@ export const simulationMetricKeys: Array<keyof SimulationMetrics> = [
   "confidence",
 ];
 
+export type DiscreteEvent =
+  | "jobLoss"
+  | "jobGain"
+  | "homeless"
+  | "windfall"
+  | "majorExpense"
+  | "healthCrisis"
+  | "burnoutBreak";
+
+export type EventTriggerMap = Record<DiscreteEvent, boolean>;
+
 type ActionFeatureVector = {
   work: number;
   learning: number;
@@ -41,6 +52,7 @@ export type DeterministicTransitionResult = {
   nextMetrics: SimulationMetrics;
   metricDeltas: Partial<SimulationMetrics>;
   featureVector: ActionFeatureVector;
+  events: EventTriggerMap;
   changelog: string[];
   impactHint: string;
 };
@@ -105,6 +117,8 @@ const keywordMap: Record<keyof ActionFeatureVector, KeywordWeight[]> = {
     ["community", 0.8],
     ["apologize", 0.9],
     ["support", 0.7],
+    ["divorce", 1.0],
+    ["breakup", 0.9],
   ],
   finance: [
     ["budget", 1.0],
@@ -143,6 +157,10 @@ const keywordMap: Record<keyof ActionFeatureVector, KeywordWeight[]> = {
     ["aggressive", 0.8],
     ["risky", 1.0],
     ["move countries", 0.9],
+    ["bankrupt", 1.0],
+    ["sued", 0.9],
+    ["homeless", 1.0],
+    ["fired", 1.0],
   ],
   discipline: [
     ["routine", 1.0],
@@ -182,6 +200,30 @@ const keywordMap: Record<keyof ActionFeatureVector, KeywordWeight[]> = {
   ],
 };
 
+const discreteEventKeywords: Record<DiscreteEvent, RegExp[]> = {
+  jobLoss: [
+    /\b(quit|fired|laid off|unemployed|resigned|lost my job|let go|jobless)\b/i,
+  ],
+  jobGain: [
+    /\b(hired|got a job|new job|promoted|promotion|job offer|secured a role)\b/i,
+  ],
+  homeless: [
+    /\b(homeless|evicted|living on the street|slept outside|lost my home|no place to live|sleeping in my car)\b/i,
+  ],
+  windfall: [
+    /\b(lottery|inheritance|sold startup|massive bonus|won big|huge payout)\b/i,
+  ],
+  majorExpense: [
+    /\b(bought a house|expensive surgery|lawsuit|sued|car crashed|heavy debt|went bankrupt|bankruptcy)\b/i,
+  ],
+  healthCrisis: [
+    /\b(cancer|heart attack|hospitalized|car crash|severe injury|stroke|coma|terminally ill)\b/i,
+  ],
+  burnoutBreak: [
+    /\b(burnout|mental breakdown|depression|panic attack|severe anxiety|exhausted|gave up)\b/i,
+  ],
+};
+
 function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
@@ -213,6 +255,40 @@ function keywordScore(text: string, tokenSet: Set<string>, keywords: KeywordWeig
 
 function activation(raw: number): number {
   return clamp01(1 - Math.exp(-Math.max(0, raw)));
+}
+
+function detectDiscreteEvents(text: string): EventTriggerMap {
+  const events: EventTriggerMap = {
+    jobLoss: false,
+    jobGain: false,
+    homeless: false,
+    windfall: false,
+    majorExpense: false,
+    healthCrisis: false,
+    burnoutBreak: false,
+  };
+
+  const normalized = ` ${text} `.toLowerCase();
+
+  for (const event of Object.keys(discreteEventKeywords) as DiscreteEvent[]) {
+    for (const pattern of discreteEventKeywords[event]) {
+      if (pattern.test(normalized)) {
+        events[event] = true;
+        break;
+      }
+    }
+  }
+
+  // Conflict resolution
+  if (events.jobGain && events.jobLoss) {
+    if (normalized.indexOf("quit") < normalized.indexOf("hired")) {
+      events.jobLoss = false;
+    } else {
+      events.jobGain = false;
+    }
+  }
+
+  return events;
 }
 
 function extractActionFeatures(actionLabel: string, actionDetails?: string): ActionFeatureVector {
@@ -327,7 +403,74 @@ function summarizeDeltaLines(deltas: Partial<SimulationMetrics>): string[] {
   return lines.slice(0, 6);
 }
 
-function buildImpactHint(deltas: Partial<SimulationMetrics>): string {
+function applyEventShocks(current: SimulationMetrics, events: EventTriggerMap): SimulationMetrics {
+  const next = { ...current };
+
+  if (events.homeless) {
+    next.netWorth = Math.min(next.netWorth, -5000);
+    next.health = Math.max(0, next.health - 40);
+    next.stress = 95;
+    next.career = Math.max(0, next.career - 30);
+    next.relationships = Math.max(0, next.relationships - 10);
+    next.confidence = Math.max(0, next.confidence - 40);
+    next.monthlyExpenses = Math.min(next.monthlyExpenses, 500); // Bare survival
+  }
+
+  if (events.jobLoss) {
+    next.salary = 0;
+    next.career = Math.max(0, next.career - 15);
+    next.stress = Math.min(100, next.stress + 30);
+    next.confidence = Math.max(0, next.confidence - 20);
+    next.freeTime = Math.min(168, next.freeTime + 40);
+  } else if (events.jobGain) {
+    const boost = 20_000 + next.career * 1_000 + toScore(next.confidence) * 15_000;
+    next.salary = Math.max(next.salary, Math.round(boost));
+    next.career = Math.min(100, next.career + 10);
+    next.stress = Math.max(0, next.stress - 20);
+    next.confidence = Math.min(100, next.confidence + 20);
+  }
+
+  if (events.windfall) {
+    next.netWorth += 250_000;
+    next.stress = Math.max(0, next.stress - 40);
+    next.confidence = Math.min(100, next.confidence + 30);
+  }
+
+  if (events.majorExpense) {
+    next.netWorth -= 100_000;
+    next.monthlyExpenses += 1_000;
+    next.stress = Math.min(100, next.stress + 35);
+  }
+
+  if (events.healthCrisis) {
+    next.health = Math.max(0, next.health - 60);
+    next.stress = Math.min(100, next.stress + 50);
+    next.relationships = Math.min(100, next.relationships + 5); // People rally
+    next.netWorth -= 20_000; // Medical bills
+    next.projectedDeathDate -= (5 * 365 * 24 * 60 * 60 * 1000); // Lose 5 years
+  }
+
+  if (events.burnoutBreak) {
+    next.career = Math.max(0, next.career - 25);
+    next.health = Math.max(0, next.health - 20);
+    next.stress = 90;
+    next.salary = Math.round(next.salary * 0.5); // reduced capacity
+    next.freeTime = Math.min(168, next.freeTime + 20);
+    next.fulfillment = Math.max(0, next.fulfillment - 40);
+  }
+
+  return next;
+}
+
+function buildImpactHint(deltas: Partial<SimulationMetrics>, events?: EventTriggerMap): string {
+  if (events?.homeless) return "CRITICAL SHOCK: Homelessness plummeted health, wealth, and career.";
+  if (events?.jobLoss) return "MAJOR SHOCK: Loss of employment zeroed income and spiked stress.";
+  if (events?.healthCrisis) return "CRITICAL SHOCK: Severe medical emergency drained health and savings.";
+  if (events?.burnoutBreak) return "MAJOR SHOCK: Complete burnout halted career momentum and slashed capacity.";
+  if (events?.majorExpense) return "MAJOR SHOCK: A massive financial hit drained resources.";
+  if (events?.windfall) return "MAJOR BOOST: A significant financial windfall transformed your net worth.";
+  if (events?.jobGain) return "MAJOR BOOST: Securing new employment successfully restored income and career trajectory.";
+
   const tracked: Array<{
     key: keyof SimulationMetrics;
     label: string;
@@ -387,7 +530,13 @@ function computeDailyMetrics(
   const taxRate = effectiveTaxRate(current.salary);
   const afterTaxMonthly = (current.salary * (1 - taxRate)) / 12;
   const baselineExpenseBurden = clamp01(current.monthlyExpenses / Math.max(500, afterTaxMonthly));
-  const debtPressure = clamp01((-current.netWorth) / 140_000);
+
+  // Vicious cycle: Debt Spiral
+  let debtPressure = clamp01((-current.netWorth) / 140_000);
+  if (current.netWorth < -50_000) {
+    debtPressure = clamp01(debtPressure * 1.5); // Exponential debt pressure
+  }
+
   const financialStrain = clamp01(0.58 * baselineExpenseBurden + 0.20 * debtPressure);
   const socialConflict = clamp01(0.50 + 0.40 * workload - 0.48 * socialInvestment + 0.12 * features.risk);
 
@@ -418,13 +567,19 @@ function computeDailyMetrics(
   const freeTime = clampMetricValue("freeTime", current.freeTime + 0.23 * (freeTimeTarget - current.freeTime));
   const freeTimeNorm = clamp01(freeTime / 50);
 
-  const burnoutRisk = clamp01(
+  let burnoutRisk = clamp01(
     0.42 * stressNorm
     + 0.28 * (1 - healthScore)
     + 0.18 * workload
     + 0.12 * (1 - freeTimeNorm)
     - 0.20 * recoveryFocus,
   );
+
+  // Vicious cycle: Severe Burnout
+  if (current.stress > 85) {
+    burnoutRisk = clamp01(burnoutRisk * 1.4);
+  }
+
   const healthTarget = clamp(
     46
     + 30 * recoveryFocus
@@ -436,7 +591,12 @@ function computeDailyMetrics(
     0,
     100,
   );
-  const health = clampMetricValue("health", current.health + 0.16 * (healthTarget - current.health));
+  let health = clampMetricValue("health", current.health + 0.16 * (healthTarget - current.health));
+
+  // Health crash if deeply stressed/burnout
+  if (stress > 95 && current.health > 20) {
+    health = clampMetricValue("health", health - 1.5);
+  }
 
   const socialHoursTarget = clamp(socialHours + 2 * features.discipline + 2 * freeTimeNorm - 3 * stressNorm - 2 * workload, 0, 168);
   const relationships = clampMetricValue(
@@ -531,8 +691,14 @@ function computeDailyMetrics(
     ) / needWeightSum,
   );
 
+  // Severe scenario compounding
+  let baselineFulfillment = 26;
+  if (current.netWorth < -10_000 && salary < 15_000) {
+    baselineFulfillment = 10;
+  }
+
   const fulfillmentTarget = clamp(
-    26
+    baselineFulfillment
     + 0.22 * career
     + 0.22 * relationshipScore * 100
     + 0.20 * health
@@ -543,7 +709,7 @@ function computeDailyMetrics(
     0,
     100,
   );
-  const fulfillment = clampMetricValue(
+  let fulfillment = clampMetricValue(
     "fulfillment",
     current.fulfillment + 0.16 * (fulfillmentTarget - current.fulfillment),
   );
@@ -553,8 +719,15 @@ function computeDailyMetrics(
     -1,
     1,
   );
+
+  // Vicious cycle: Absolute loss of confidence
+  let confidenceFloor = 22;
+  if (stress > 90 || netWorth < -50_000 || health < 20) {
+    confidenceFloor = 5;
+  }
+
   const confidenceTarget = clamp(
-    22
+    confidenceFloor
     + 0.30 * career
     + 0.20 * moneyScoreRaw * 100
     + 0.16 * health
@@ -565,7 +738,7 @@ function computeDailyMetrics(
     0,
     100,
   );
-  const confidence = clampMetricValue(
+  let confidence = clampMetricValue(
     "confidence",
     current.confidence + 0.17 * (confidenceTarget - current.confidence),
   );
@@ -596,8 +769,13 @@ function computeDailyMetrics(
 export function deterministicTransition(params: TransitionInput): DeterministicTransitionResult {
   const days = Math.max(1, Math.min(3_650, Math.round(params.days ?? 1)));
   const featureVector = extractActionFeatures(params.actionLabel, params.actionDetails);
+  const events = detectDiscreteEvents(`${params.actionLabel || ""} ${params.actionDetails || ""}`);
+
   const baseline = { ...params.currentMetrics };
   let current = { ...params.currentMetrics };
+
+  // Apply immediate structural shocks before daily compounding
+  current = applyEventShocks(current, events);
 
   for (let day = 0; day < days; day += 1) {
     current = computeDailyMetrics(current, featureVector);
@@ -615,7 +793,8 @@ export function deterministicTransition(params: TransitionInput): DeterministicT
     nextMetrics: current,
     metricDeltas,
     featureVector,
+    events,
     changelog: summarizeDeltaLines(metricDeltas),
-    impactHint: buildImpactHint(metricDeltas),
+    impactHint: buildImpactHint(metricDeltas, events),
   };
 }

@@ -8,7 +8,69 @@ export const runtime = "nodejs";
 
 const MAX_RESUME_BYTES = 8 * 1024 * 1024;
 const MAX_TEXT_CHARS = 120_000;
-let pdfWorkerLoaded = false;
+
+function ensurePdfJsNodeGlobals() {
+  if (typeof globalThis.DOMMatrix !== "undefined") return;
+
+  // pdfjs-dist can touch DOMMatrix in Node paths, even for text extraction.
+  class MinimalDOMMatrix {
+    a = 1;
+    b = 0;
+    c = 0;
+    d = 1;
+    e = 0;
+    f = 0;
+
+    constructor(init?: number[] | string) {
+      if (Array.isArray(init) && init.length >= 6) {
+        [this.a, this.b, this.c, this.d, this.e, this.f] = init;
+      }
+    }
+
+    multiplySelf() {
+      return this;
+    }
+
+    preMultiplySelf() {
+      return this;
+    }
+
+    translateSelf() {
+      return this;
+    }
+
+    scaleSelf() {
+      return this;
+    }
+
+    rotateSelf() {
+      return this;
+    }
+
+    inverse() {
+      return this;
+    }
+
+    invertSelf() {
+      return this;
+    }
+
+    static fromFloat32Array() {
+      return new MinimalDOMMatrix();
+    }
+
+    static fromFloat64Array() {
+      return new MinimalDOMMatrix();
+    }
+
+    static fromMatrix() {
+      return new MinimalDOMMatrix();
+    }
+  }
+
+  (globalThis as { DOMMatrix?: typeof DOMMatrix }).DOMMatrix =
+    MinimalDOMMatrix as unknown as typeof DOMMatrix;
+}
 
 function errorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message;
@@ -48,15 +110,16 @@ function inferMimeType(file: File) {
 }
 
 async function extractPdfText(buffer: Buffer) {
-  if (!pdfWorkerLoaded) {
-    await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
-    pdfWorkerLoaded = true;
-  }
+  ensurePdfJsNodeGlobals();
 
-  const pdfModule = await import("pdf-parse") as any;
-  const pdf = pdfModule.default || pdfModule;
-  const result = await (pdf as unknown as (data: Buffer) => Promise<{ text: string }>)(buffer);
-  return result.text ?? "";
+  const pdfModule = await import("pdf-parse");
+  const parser = new pdfModule.PDFParse({ data: buffer });
+  try {
+    const result = await parser.getText();
+    return result.text ?? "";
+  } finally {
+    await parser.destroy();
+  }
 }
 
 async function extractDocxText(buffer: Buffer) {
@@ -105,8 +168,19 @@ export async function POST(req: Request) {
     let parser = "plain";
     let extracted = "";
     if (mimeType === "application/pdf") {
-      parser = "pdf-parse";
-      extracted = await extractPdfText(bytes);
+      parser = "pdf-parse-v2";
+      try {
+        extracted = await extractPdfText(bytes);
+      } catch (pdfError) {
+        console.error("PDF extraction failed:", pdfError);
+        return NextResponse.json(
+          {
+            error:
+              "Could not parse this PDF file. Try another PDF, upload DOCX, or paste text manually.",
+          },
+          { status: 422 },
+        );
+      }
     } else if (
       mimeType ===
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
