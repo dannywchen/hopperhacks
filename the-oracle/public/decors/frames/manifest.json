@@ -1,0 +1,142 @@
+{
+  "source": "public/decors/frame.png",
+  "imageSize": {
+    "width": 1536,
+    "height": 1024
+  },
+  "pieces": {
+    "top-rail": {
+      "sourceBounds": {
+        "x1": 235,
+        "y1": 251,
+        "x2": 1298,
+        "y2": 311
+      },
+      "variants": {
+        "thin": {
+          "file": "public/decors/frames/top-rail_thin.png"
+        },
+        "regular": {
+          "file": "public/decors/frames/top-rail_regular.png"
+        },
+        "fat": {
+          "file": "public/decors/frames/top-rail_fat.png"
+        }
+      }
+    },
+    "mid-rail": {
+      "sourceBounds": {
+        "x1": 234,
+        "y1": 666,
+        "x2": 1298,
+        "y2": 719
+      },
+      "variants": {
+        "thin": {
+          "file": "public/decors/frames/mid-rail_thin.png"
+        },
+        "regular": {
+          "file": "public/decors/frames/mid-rail_regular.png"
+        },
+        "fat": {
+          "file": "public/decors/frames/mid-rail_fat.png"
+        }
+      }
+    },
+    "bottom-rail": {
+      "sourceBounds": {
+        "x1": 77,
+        "y1": 809,
+        "x2": 1456,
+        "y2": 880
+      },
+      "variants": {
+        "thin": {
+          "file": "public/decors/frames/bottom-rail_thin.png"
+        },
+        "regular": {
+          "file": "public/decors/frames/bottom-rail_regular.png"
+        },
+        "fat": {
+          "file": "public/decors/frames/bottom-rail_fat.png"
+        }
+      }
+    },
+    "left-rail": {
+      "sourceBounds": {
+        "x1": 68,
+        "y1": 256,
+        "x2": 179,
+        "y2": 754
+      },
+      "variants": {
+        "thin": {
+          "file": "public/decors/frames/left-rail_thin.png"
+        },
+        "regular": {
+          "file": "public/decors/frames/left-rail_regular.png"
+        },
+        "fat": {
+          "file": "public/decors/frames/left-rail_fat.png"
+        }
+      }
+    },
+    "right-rail": {
+      "sourceBounds": {
+        "x1": 1356,
+        "y1": 255,
+        "x2": 1468,
+        "y2": 751
+      },
+      "variants": {
+        "thin": {
+          "file": "public/decors/frames/right-rail_thin.png"
+        },
+        "regular": {
+          "file": "public/decors/frames/right-rail_regular.png"
+        },
+        "fat": {
+          "file": "public/decors/frames/right-rail_fat.png"
+        }
+      }
+    },
+    "top-left-crest": {
+      "sourceBounds": {
+        "x1": 84,
+        "y1": 87,
+        "x2": 319,
+        "y2": 206
+      },
+      "variants": {
+        "thin": {
+          "file": "public/decors/frames/top-left-crest_thin.png"
+        },
+        "regular": {
+          "file": "public/decors/frames/top-left-crest_regular.png"
+        },
+        "fat": {
+          "file": "public/decors/frames/top-left-crest_fat.png"
+        }
+      }
+    },
+    "top-right-crest": {
+      "sourceBounds": {
+        "x1": 1233,
+        "y1": 86,
+        "x2": 1450,
+        "y2": 206
+      },
+      "variants": {
+        "thin": {
+          "file": "public/decors/frames/top-right-crest_thin.png"
+        },
+        "regular": {
+          "file": "public/decors/frames/top-right-crest_regular.png"
+        },
+        "fat": {
+          "file": "public/decors/frames/top-right-crest_fat.png"
+        }
+      }
+    }
+  }
+}

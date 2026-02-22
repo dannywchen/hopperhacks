@@ -1,4 +1,4 @@
-import { supabaseAdmin } from './supabase'
+import { getSupabaseAdmin } from './supabase'
 
 const clamp = (val, min = 0, max = 100) => Math.min(max, Math.max(min, val))
 
@@ -7,6 +7,7 @@ const clamp = (val, min = 0, max = 100) => Math.min(max, Math.max(min, val))
 // ─────────────────────────────────────────────
 
 export async function loadGameState(profileId) {
+  const supabaseAdmin = getSupabaseAdmin()
   const { data, error } = await supabaseAdmin
     .from('game_state')
     .select('*')
@@ -17,6 +18,7 @@ export async function loadGameState(profileId) {
 }
 
 export async function saveGameState(profileId, updates) {
+  const supabaseAdmin = getSupabaseAdmin()
   const { data: current } = await supabaseAdmin
     .from('game_state')
     .select('decision_count')
@@ -65,6 +67,7 @@ export async function applyStatDeltas(profileId, deltas, event) {
 // ─────────────────────────────────────────────
 
 export async function loadAgentMemory(profileId, category = null) {
+  const supabaseAdmin = getSupabaseAdmin()
   let query = supabaseAdmin
     .from('agent_memory')
     .select('*')
@@ -79,6 +82,7 @@ export async function loadAgentMemory(profileId, category = null) {
 }
 
 export async function buildAIMemoryContext(profileId, topN = 10) {
+  const supabaseAdmin = getSupabaseAdmin()
   const { data, error } = await supabaseAdmin
     .from('agent_memory')
     .select('category, key, content')
@@ -91,6 +95,7 @@ export async function buildAIMemoryContext(profileId, topN = 10) {
 }
 
 export async function saveAgentMemory(memory) {
+  const supabaseAdmin = getSupabaseAdmin()
   const { error } = await supabaseAdmin
     .from('agent_memory')
     .upsert(memory, { onConflict: 'profile_id, key' })
@@ -102,11 +107,13 @@ export async function saveAgentMemory(memory) {
 // ─────────────────────────────────────────────
 
 export async function logLifeEvent(event) {
+  const supabaseAdmin = getSupabaseAdmin()
   const { error } = await supabaseAdmin.from('life_events').insert(event)
   if (error) throw error
 }
 
 export async function loadLifeEvents(profileId, limit = 50, category = null) {
+  const supabaseAdmin = getSupabaseAdmin()
   let query = supabaseAdmin
     .from('life_events')
     .select('*')
@@ -126,6 +133,7 @@ export async function loadLifeEvents(profileId, limit = 50, category = null) {
 // ─────────────────────────────────────────────
 
 export async function loadGameSettings(profileId) {
+  const supabaseAdmin = getSupabaseAdmin()
   const { data, error } = await supabaseAdmin
     .from('game_settings')
     .select('*')
@@ -136,6 +144,7 @@ export async function loadGameSettings(profileId) {
 }
 
 export async function saveGameSettings(profileId, settings) {
+  const supabaseAdmin = getSupabaseAdmin()
   const { error } = await supabaseAdmin
     .from('game_settings')
     .upsert({ profile_id: profileId, ...settings }, { onConflict: 'profile_id' })

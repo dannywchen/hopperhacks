@@ -1,0 +1,462 @@
+{
+  "source": "public/assets/images/Sprite Sheet Generation Feb 19 2026.png",
+  "output": "public/sprite-parts",
+  "removed_existing_output": true,
+  "thresholds": {
+    "alpha": 10,
+    "min_area": 1500,
+    "min_width": 45,
+    "min_height": 40,
+    "row_cluster_gap": 70
+  },
+  "row_debug": [
+    {
+      "row_index_1_based": 1,
+      "count": 7,
+      "center_y_min": 109.0,
+      "center_y_max": 109.0
+    },
+    {
+      "row_index_1_based": 2,
+      "count": 7,
+      "center_y_min": 275.5,
+      "center_y_max": 276.5
+    },
+    {
+      "row_index_1_based": 3,
+      "count": 7,
+      "center_y_min": 448.0,
+      "center_y_max": 448.5
+    },
+    {
+      "row_index_1_based": 4,
+      "count": 8,
+      "center_y_min": 617.5,
+      "center_y_max": 618.5
+    },
+    {
+      "row_index_1_based": 5,
+      "count": 8,
+      "center_y_min": 771.5,
+      "center_y_max": 778.5
+    },
+    {
+      "row_index_1_based": 6,
+      "count": 8,
+      "center_y_min": 908.0,
+      "center_y_max": 910.5
+    }
+  ],
+  "categories": {
+    "head": {
+      "count": 7,
+      "items": [
+        {
+          "id": "head_porcelain",
+          "slug": "porcelain",
+          "label": "Porcelain",
+          "index": 1,
+          "file": "public/sprite-parts/head/porcelain.png",
+          "bbox": {
+            "x": 99,
+            "y": 51,
+            "width": 134,
+            "height": 117
+          }
+        },
+        {
+          "id": "head_fair",
+          "slug": "fair",
+          "label": "Fair",
+          "index": 2,
+          "file": "public/sprite-parts/head/fair.png",
+          "bbox": {
+            "x": 288,
+            "y": 51,
+            "width": 134,
+            "height": 117
+          }
+        },
+        {
+          "id": "head_beige",
+          "slug": "beige",
+          "label": "Beige",
+          "index": 3,
+          "file": "public/sprite-parts/head/beige.png",
+          "bbox": {
+            "x": 480,
+            "y": 51,
+            "width": 134,
+            "height": 117
+          }
+        },
+        {
+          "id": "head_warm",
+          "slug": "warm",
+          "label": "Warm",
+          "index": 4,
+          "file": "public/sprite-parts/head/warm.png",
+          "bbox": {
+            "x": 670,
+            "y": 51,
+            "width": 135,
+            "height": 117
+          }
+        },
+        {
+          "id": "head_tan",
+          "slug": "tan",
+          "label": "Tan",
+          "index": 5,
+          "file": "public/sprite-parts/head/tan.png",
+          "bbox": {
+            "x": 861,
+            "y": 51,
+            "width": 132,
+            "height": 117
+          }
+        },
+        {
+          "id": "head_brown",
+          "slug": "brown",
+          "label": "Brown",
+          "index": 6,
+          "file": "public/sprite-parts/head/brown.png",
+          "bbox": {
+            "x": 1044,
+            "y": 51,
+            "width": 135,
+            "height": 117
+          }
+        },
+        {
+          "id": "head_deep",
+          "slug": "deep",
+          "label": "Deep",
+          "index": 7,
+          "file": "public/sprite-parts/head/deep.png",
+          "bbox": {
+            "x": 1226,
+            "y": 51,
+            "width": 136,
+            "height": 117
+          }
+        }
+      ]
+    },
+    "clothes": {
+      "count": 7,
+      "items": [
+        {
+          "id": "clothes_green-tunic",
+          "slug": "green-tunic",
+          "label": "Green Tunic",
+          "index": 1,
+          "file": "public/sprite-parts/clothes/green-tunic.png",
+          "bbox": {
+            "x": 96,
+            "y": 218,
+            "width": 141,
+            "height": 118
+          }
+        },
+        {
+          "id": "clothes_blue-vest",
+          "slug": "blue-vest",
+          "label": "Blue Vest",
+          "index": 2,
+          "file": "public/sprite-parts/clothes/blue-vest.png",
+          "bbox": {
+            "x": 286,
+            "y": 218,
+            "width": 140,
+            "height": 117
+          }
+        },
+        {
+          "id": "clothes_blue-guard",
+          "slug": "blue-guard",
+          "label": "Blue Guard",
+          "index": 3,
+          "file": "public/sprite-parts/clothes/blue-guard.png",
+          "bbox": {
+            "x": 480,
+            "y": 218,
+            "width": 142,
+            "height": 116
+          }
+        },
+        {
+          "id": "clothes_red-vest",
+          "slug": "red-vest",
+          "label": "Red Vest",
+          "index": 4,
+          "file": "public/sprite-parts/clothes/red-vest.png",
+          "bbox": {
+            "x": 669,
+            "y": 217,
+            "width": 142,
+            "height": 118
+          }
+        },
+        {
+          "id": "clothes_violet-vest",
+          "slug": "violet-vest",
+          "label": "Violet Vest",
+          "index": 5,
+          "file": "public/sprite-parts/clothes/violet-vest.png",
+          "bbox": {
+            "x": 862,
+            "y": 218,
+            "width": 139,
+            "height": 117
+          }
+        },
+        {
+          "id": "clothes_brown-leather",
+          "slug": "brown-leather",
+          "label": "Brown Leather",
+          "index": 6,
+          "file": "public/sprite-parts/clothes/brown-leather.png",
+          "bbox": {
+            "x": 1044,
+            "y": 218,
+            "width": 140,
+            "height": 118
+          }
+        },
+        {
+          "id": "clothes_tan-traveler",
+          "slug": "tan-traveler",
+          "label": "Tan Traveler",
+          "index": 7,
+          "file": "public/sprite-parts/clothes/tan-traveler.png",
+          "bbox": {
+            "x": 1233,
+            "y": 218,
+            "width": 140,
+            "height": 117
+          }
+        }
+      ]
+    },
+    "hair/front": {
+      "count": 8,
+      "items": [
+        {
+          "id": "hair_front_short-umber",
+          "slug": "short-umber",
+          "label": "Short Umber",
+          "index": 1,
+          "file": "public/sprite-parts/hair/front/short-umber.png",
+          "bbox": {
+            "x": 100,
+            "y": 728,
+            "width": 141,
+            "height": 88
+          }
+        },
+        {
+          "id": "hair_front_short-blonde",
+          "slug": "short-blonde",
+          "label": "Short Blonde",
+          "index": 2,
+          "file": "public/sprite-parts/hair/front/short-blonde.png",
+          "bbox": {
+            "x": 297,
+            "y": 729,
+            "width": 136,
+            "height": 89
+          }
+        },
+        {
+          "id": "hair_front_short-brown",
+          "slug": "short-brown",
+          "label": "Short Brown",
+          "index": 3,
+          "file": "public/sprite-parts/hair/front/short-brown.png",
+          "bbox": {
+            "x": 488,
+            "y": 730,
+            "width": 142,
+            "height": 88
+          }
+        },
+        {
+          "id": "hair_front_short-charcoal",
+          "slug": "short-charcoal",
+          "label": "Short Charcoal",
+          "index": 4,
+          "file": "public/sprite-parts/hair/front/short-charcoal.png",
+          "bbox": {
+            "x": 675,
+            "y": 729,
+            "width": 139,
+            "height": 91
+          }
+        },
+        {
+          "id": "hair_front_short-black",
+          "slug": "short-black",
+          "label": "Short Black",
+          "index": 5,
+          "file": "public/sprite-parts/hair/front/short-black.png",
+          "bbox": {
+            "x": 857,
+            "y": 730,
+            "width": 135,
+            "height": 87
+          }
+        },
+        {
+          "id": "hair_front_ponytail-violet",
+          "slug": "ponytail-violet",
+          "label": "Ponytail Violet",
+          "index": 6,
+          "file": "public/sprite-parts/hair/front/ponytail-violet.png",
+          "bbox": {
+            "x": 1025,
+            "y": 730,
+            "width": 147,
+            "height": 94
+          }
+        },
+        {
+          "id": "hair_front_ponytail-blonde",
+          "slug": "ponytail-blonde",
+          "label": "Ponytail Blonde",
+          "index": 7,
+          "file": "public/sprite-parts/hair/front/ponytail-blonde.png",
+          "bbox": {
+            "x": 1201,
+            "y": 732,
+            "width": 150,
+            "height": 94
+          }
+        },
+        {
+          "id": "hair_front_ponytail-platinum",
+          "slug": "ponytail-platinum",
+          "label": "Ponytail Platinum",
+          "index": 8,
+          "file": "public/sprite-parts/hair/front/ponytail-platinum.png",
+          "bbox": {
+            "x": 1367,
+            "y": 732,
+            "width": 148,
+            "height": 93
+          }
+        }
+      ]
+    },
+    "hair/side": {
+      "count": 8,
+      "items": [
+        {
+          "id": "hair_side_short-umber",
+          "slug": "short-umber",
+          "label": "Short Umber",
+          "index": 1,
+          "file": "public/sprite-parts/hair/side/short-umber.png",
+          "bbox": {
+            "x": 102,
+            "y": 865,
+            "width": 141,
+            "height": 89
+          }
+        },
+        {
+          "id": "hair_side_short-blonde",
+          "slug": "short-blonde",
+          "label": "Short Blonde",
+          "index": 2,
+          "file": "public/sprite-parts/hair/side/short-blonde.png",
+          "bbox": {
+            "x": 294,
+            "y": 864,
+            "width": 137,
+            "height": 89
+          }
+        },
+        {
+          "id": "hair_side_short-brown",
+          "slug": "short-brown",
+          "label": "Short Brown",
+          "index": 3,
+          "file": "public/sprite-parts/hair/side/short-brown.png",
+          "bbox": {
+            "x": 488,
+            "y": 864,
+            "width": 141,
+            "height": 89
+          }
+        },
+        {
+          "id": "hair_side_short-charcoal",
+          "slug": "short-charcoal",
+          "label": "Short Charcoal",
+          "index": 4,
+          "file": "public/sprite-parts/hair/side/short-charcoal.png",
+          "bbox": {
+            "x": 676,
+            "y": 866,
+            "width": 138,
+            "height": 87
+          }
+        },
+        {
+          "id": "hair_side_short-black",
+          "slug": "short-black",
+          "label": "Short Black",
+          "index": 5,
+          "file": "public/sprite-parts/hair/side/short-black.png",
+          "bbox": {
+            "x": 856,
+            "y": 865,
+            "width": 137,
+            "height": 90
+          }
+        },
+        {
+          "id": "hair_side_ponytail-violet",
+          "slug": "ponytail-violet",
+          "label": "Ponytail Violet",
+          "index": 6,
+          "file": "public/sprite-parts/hair/side/ponytail-violet.png",
+          "bbox": {
+            "x": 1037,
+            "y": 866,
+            "width": 138,
+            "height": 90
+          }
+        },
+        {
+          "id": "hair_side_ponytail-blonde",
+          "slug": "ponytail-blonde",
+          "label": "Ponytail Blonde",
+          "index": 7,
+          "file": "public/sprite-parts/hair/side/ponytail-blonde.png",
+          "bbox": {
+            "x": 1215,
+            "y": 864,
+            "width": 133,
+            "height": 91
+          }
+        },
+        {
+          "id": "hair_side_ponytail-platinum",
+          "slug": "ponytail-platinum",
+          "label": "Ponytail Platinum",
+          "index": 8,
+          "file": "public/sprite-parts/hair/side/ponytail-platinum.png",
+          "bbox": {
+            "x": 1381,
+            "y": 864,
+            "width": 137,
+            "height": 91
+          }
+        }
+      ]
+    }
+  }
+}

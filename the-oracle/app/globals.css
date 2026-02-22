@@ -9,6 +9,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-arcane-display: var(--font-cinzel);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -80,6 +81,22 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Hogwarts palette */
+  --hp-gryffindor-scarlet: #ae0001;
+  --hp-gryffindor-deep: #740001;
+  --hp-gryffindor-gold: #d3a625;
+  --hp-gryffindor-gold-bright: #eeba30;
+  --hp-slytherin-emerald: #033807;
+  --hp-slytherin-silver: #717679;
+  --hp-hufflepuff-yellow: #e3a000;
+  --hp-hufflepuff-black: #3d2f22;
+  --hp-ravenclaw-blue: #00165e;
+  --hp-ravenclaw-blue-bright: #5272e8;
+  --hp-ravenclaw-bronze: #c39a1c;
+  --hp-mahogany: #4b2b1f;
+  --hp-charcoal: #1b1714;
+  --hp-parchment: #e8dcc4;
 }
 
 .dark {
@@ -123,4 +140,512 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+@keyframes emberDrift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-8px, 10px, 0);
+  }
+  100% {
+    transform: translate3d(6px, -8px, 0);
+  }
+}
+
+.mystic-bg {
+  background: #000;
+  position: relative;
+  overflow: hidden;
+}
+
+.mystic-bg::before {
+  content: none;
+}
+
+.mystic-bg::after {
+  content: none;
+}
+
+.arcane-display-title {
+  font-family: var(--font-arcane-display), var(--font-geist-sans), serif;
+  letter-spacing: 0.01em;
+}
+
+.onboarding-decor-layer {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.onboarding-decor-item {
+  position: absolute;
+  opacity: 0.22;
+  filter:
+    saturate(0.9)
+    brightness(0.84)
+    drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
+  mix-blend-mode: screen;
+}
+
+.onboarding-progress-shell {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1461 / 425;
+  filter: drop-shadow(0 9px 20px rgba(0, 0, 0, 0.45));
+  isolation: isolate;
+}
+
+.onboarding-progress-slot {
+  position: absolute;
+  left: 14%;
+  top: 49.1%;
+  width: 71.6%;
+  height: 13.2%;
+  border-radius: 999px;
+  overflow: hidden;
+  z-index: 3;
+  background: linear-gradient(180deg, rgba(12, 8, 6, 0.3), rgba(18, 12, 8, 0.08));
+}
+
+.onboarding-progress-fill {
+  position: relative;
+  height: 100%;
+  border-radius: inherit;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(211, 166, 37, 0.9) 0%,
+      rgba(238, 186, 48, 0.97) 38%,
+      rgba(232, 220, 196, 0.95) 62%,
+      rgba(195, 154, 28, 0.92) 100%
+    );
+  box-shadow:
+    0 0 14px rgba(211, 166, 37, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  transition: width 360ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+.onboarding-progress-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.06) 35%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.onboarding-progress-frame-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.onboarding-progress-frame-image {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (max-width: 640px) {
+  .onboarding-decor-item {
+    opacity: 0.14;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-progress-fill {
+    transition: none;
+  }
+}
+
+.wizard-guide-decor {
+  position: absolute;
+  left: 0;
+  right: auto;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.wizard-guide-hill {
+  position: absolute;
+  left: -12px;
+  bottom: -1px;
+  width: clamp(210px, 25vw, 300px);
+}
+
+.wizard-guide-hill-image {
+  width: 100%;
+  height: auto;
+  user-select: none;
+}
+
+.wizard-guide-combo {
+  position: absolute;
+  left: 24px;
+  bottom: 22px;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.55rem;
+}
+
+.wizard-guide-bubble {
+  max-width: 270px;
+  border: 1px solid color-mix(in srgb, var(--hp-ravenclaw-bronze) 55%, #000 45%);
+  background: linear-gradient(180deg, rgba(17, 22, 28, 0.9), rgba(11, 15, 20, 0.93));
+  color: color-mix(in srgb, var(--hp-parchment) 92%, #fff 8%);
+  padding: 0.58rem 0.78rem 0.62rem;
+  font-size: 11.5px;
+  line-height: 1.32;
+  letter-spacing: 0.015em;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+  position: relative;
+}
+
+.wizard-guide-bubble-ragged {
+  border-radius: 15px 20px 14px 22px / 17px 14px 19px 13px;
+}
+
+.wizard-guide-bubble-ragged::after {
+  content: "";
+  position: absolute;
+  left: -8px;
+  bottom: 10px;
+  width: 14px;
+  height: 14px;
+  background: rgba(12, 16, 21, 0.94);
+  border-left: 1px solid color-mix(in srgb, var(--hp-ravenclaw-bronze) 55%, #000 45%);
+  border-bottom: 1px solid color-mix(in srgb, var(--hp-ravenclaw-bronze) 55%, #000 45%);
+  transform: rotate(18deg) skewX(-8deg);
+}
+
+.wizard-guide-bubble-ragged::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: -5px;
+  width: 12px;
+  height: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--hp-ravenclaw-bronze) 50%, #000 50%);
+  border-radius: 40% 65% 35% 70%;
+  opacity: 0.6;
+}
+
+.wizard-guide-sprite {
+  opacity: 0.96;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.5));
+}
+
+@media (max-width: 1024px) {
+  .wizard-guide-hill {
+    width: clamp(185px, 28vw, 250px);
+  }
+
+  .wizard-guide-combo {
+    left: 18px;
+    bottom: 18px;
+  }
+
+  .wizard-guide-bubble {
+    max-width: 220px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 640px) {
+  .wizard-guide-hill {
+    left: -20px;
+    width: 185px;
+  }
+
+  .wizard-guide-combo {
+    left: 10px;
+    bottom: 13px;
+    gap: 0.4rem;
+  }
+
+  .wizard-guide-bubble {
+    max-width: 156px;
+    padding: 0.42rem 0.52rem 0.46rem;
+    font-size: 10px;
+    line-height: 1.24;
+  }
+}
+
+.arcane-panel {
+  position: relative;
+  border-radius: 18px !important;
+  border: 1px solid color-mix(in srgb, var(--hp-ravenclaw-bronze) 42%, #000 58%);
+  background:
+    linear-gradient(180deg, var(--slot-surface-top, #162734), var(--slot-surface-bottom, #0e141a)),
+    radial-gradient(circle at 20% 10%, var(--slot-mist-glow, rgba(82, 114, 232, 0.1)), transparent 42%);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
+  overflow: visible;
+  isolation: isolate;
+  --arcane-outline-inset: 12px;
+  --arcane-side-width: 24px;
+  --arcane-top-height: 19px;
+  --arcane-bottom-height: 21px;
+  --arcane-crest-width: 74px;
+  --arcane-crest-height: 36px;
+  --arcane-outline-opacity: 0.86;
+  --arcane-top-url: url("/decors/frames/top-rail_regular.png");
+  --arcane-bottom-url: url("/decors/frames/bottom-rail_regular.png");
+  --arcane-left-url: url("/decors/frames/left-rail_regular.png");
+  --arcane-right-url: url("/decors/frames/right-rail_regular.png");
+  --arcane-left-crest-url: url("/decors/frames/top-left-crest_regular.png");
+  --arcane-right-crest-url: url("/decors/frames/top-right-crest_regular.png");
+}
+
+.arcane-panel::before,
+.arcane-panel::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.arcane-panel::before {
+  inset: calc(var(--arcane-outline-inset) * -1);
+  z-index: 1;
+  opacity: var(--arcane-outline-opacity);
+  background:
+    var(--arcane-top-url) center -3px / calc(100% - (var(--arcane-side-width) * 2))
+      var(--arcane-top-height) no-repeat,
+    var(--arcane-bottom-url) center calc(100% + 3px) /
+      calc(100% - (var(--arcane-side-width) * 2)) var(--arcane-bottom-height) no-repeat,
+    var(--arcane-left-url) left center / var(--arcane-side-width)
+      calc(100% - (var(--arcane-top-height) + var(--arcane-bottom-height))) no-repeat,
+    var(--arcane-right-url) right center / var(--arcane-side-width)
+      calc(100% - (var(--arcane-top-height) + var(--arcane-bottom-height))) no-repeat,
+    var(--arcane-left-crest-url) left -11px top -18px / var(--arcane-crest-width)
+      var(--arcane-crest-height) no-repeat,
+    var(--arcane-right-crest-url) right -11px top -18px / var(--arcane-crest-width)
+      var(--arcane-crest-height) no-repeat;
+  filter: drop-shadow(0 5px 9px rgba(0, 0, 0, 0.35));
+}
+
+.arcane-panel::after {
+  inset: 0;
+  z-index: 0;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+    inset 0 16px 24px rgba(0, 0, 0, 0.16);
+}
+
+.arcane-panel-outline-thin {
+  --arcane-outline-inset: 10px;
+  --arcane-side-width: 20px;
+  --arcane-top-height: 16px;
+  --arcane-bottom-height: 18px;
+  --arcane-crest-width: 64px;
+  --arcane-crest-height: 30px;
+  --arcane-outline-opacity: 0.74;
+  --arcane-top-url: url("/decors/frames/top-rail_thin.png");
+  --arcane-bottom-url: url("/decors/frames/bottom-rail_thin.png");
+  --arcane-left-url: url("/decors/frames/left-rail_thin.png");
+  --arcane-right-url: url("/decors/frames/right-rail_thin.png");
+  --arcane-left-crest-url: url("/decors/frames/top-left-crest_thin.png");
+  --arcane-right-crest-url: url("/decors/frames/top-right-crest_thin.png");
+}
+
+.arcane-panel-outline-fat {
+  --arcane-outline-inset: 14px;
+  --arcane-side-width: 28px;
+  --arcane-top-height: 24px;
+  --arcane-bottom-height: 26px;
+  --arcane-crest-width: 86px;
+  --arcane-crest-height: 42px;
+  --arcane-outline-opacity: 0.94;
+  --arcane-top-url: url("/decors/frames/top-rail_fat.png");
+  --arcane-bottom-url: url("/decors/frames/bottom-rail_fat.png");
+  --arcane-left-url: url("/decors/frames/left-rail_fat.png");
+  --arcane-right-url: url("/decors/frames/right-rail_fat.png");
+  --arcane-left-crest-url: url("/decors/frames/top-left-crest_fat.png");
+  --arcane-right-crest-url: url("/decors/frames/top-right-crest_fat.png");
+}
+
+.onboarding-path-card {
+  --arcane-outline-opacity: 0.98;
+  --arcane-outline-inset: 14px;
+  --arcane-side-width: 28px;
+  --arcane-top-height: 23px;
+  --arcane-bottom-height: 25px;
+  --arcane-crest-width: 84px;
+  --arcane-crest-height: 41px;
+}
+
+.arcane-frame {
+  position: relative;
+  border-radius: 14px !important;
+  border: var(--frame-line-width, 1px) solid
+    var(--frame-line-primary, rgba(195, 154, 28, 0.58));
+  background: linear-gradient(
+    180deg,
+    var(--frame-surface-top, #1b1915),
+    var(--frame-surface-bottom, #11100d)
+  );
+}
+
+.arcane-frame::before {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  border-radius: inherit;
+  inset: -8px;
+  opacity: 0.72;
+  background:
+    url("/decors/frames/mid-rail_regular.png") center -2px / calc(100% - 34px) 15px no-repeat,
+    url("/decors/frames/mid-rail_regular.png") center calc(100% + 3px) / calc(100% - 34px)
+      15px no-repeat,
+    url("/decors/frames/left-rail_regular.png") left center / 16px calc(100% - 28px) no-repeat,
+    url("/decors/frames/right-rail_regular.png") right center / 16px calc(100% - 28px) no-repeat;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
+.arcane-kicker {
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--hp-gryffindor-gold) 82%, #fff 18%);
+}
+
+.arcane-sprite-tab {
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--hp-slytherin-silver) 52%, #000 48%);
+  padding: 0.38rem 0.8rem;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: color-mix(in srgb, var(--hp-parchment) 78%, #fff 22%);
+  background: #171411;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.arcane-sprite-tab:hover {
+  border-color: color-mix(in srgb, var(--hp-ravenclaw-bronze) 56%, #000 44%);
+  color: var(--hp-parchment);
+  background: #1a1612;
+}
+
+.arcane-sprite-tab:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--hp-ravenclaw-blue-bright) 76%, #fff 24%);
+  outline-offset: 1px;
+}
+
+.arcane-sprite-tab-active {
+  border-color: color-mix(in srgb, var(--hp-ravenclaw-bronze) 72%, #000 28%);
+  color: #fff;
+  background: color-mix(in srgb, var(--hp-ravenclaw-blue) 34%, #15110d 66%);
+}
+
+.arcane-sprite-tile {
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--hp-slytherin-silver) 50%, #000 50%);
+  background: #15120e;
+  padding: 0.5rem;
+  color: color-mix(in srgb, var(--hp-parchment) 76%, #fff 24%);
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.arcane-sprite-tile:hover {
+  border-color: color-mix(in srgb, var(--hp-gryffindor-gold) 65%, #000 35%);
+  color: var(--hp-parchment);
+  background: #191510;
+}
+
+.arcane-sprite-tile:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--hp-ravenclaw-blue-bright) 74%, #fff 26%);
+  outline-offset: 1px;
+}
+
+.arcane-sprite-tile-active {
+  border-color: color-mix(in srgb, var(--hp-gryffindor-gold-bright) 72%, #000 28%);
+  color: #fff;
+  background: color-mix(in srgb, var(--hp-gryffindor-deep) 28%, #15110d 72%);
+}
+
+.arcane-sprite-label {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: inherit;
+}
+
+.arcane-selected-chip {
+  margin-top: 0.26rem;
+  display: inline-block;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--hp-ravenclaw-bronze) 65%, #000 35%);
+  padding: 0.08rem 0.45rem;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--hp-ravenclaw-bronze) 88%, #fff 12%);
+  background: color-mix(in srgb, var(--hp-ravenclaw-blue) 24%, #14110d 76%);
+}
+
+.arcane-button-secondary {
+  gap: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--hp-ravenclaw-bronze) 58%, #000 42%);
+  color: var(--hp-parchment);
+  background: #191510;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.arcane-button-secondary:hover {
+  border-color: color-mix(in srgb, var(--hp-gryffindor-gold-bright) 70%, #000 30%);
+  background: #1d1812;
+  color: #fff;
+}
+
+.arcane-button-secondary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--hp-ravenclaw-blue-bright) 76%, #fff 24%);
+  outline-offset: 1px;
+}
+
+.arcane-button-primary {
+  border: 1px solid color-mix(in srgb, var(--hp-gryffindor-gold) 60%, #000 40%);
+  color: color-mix(in srgb, var(--hp-gryffindor-gold-bright) 92%, #fff 8%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--hp-gryffindor-scarlet) 78%, #000 22%),
+    color-mix(in srgb, var(--hp-gryffindor-deep) 88%, #000 12%)
+  );
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.arcane-button-primary:hover {
+  border-color: color-mix(in srgb, var(--hp-gryffindor-gold-bright) 74%, #000 26%);
+  color: #fff;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--hp-gryffindor-scarlet) 86%, #000 14%),
+    color-mix(in srgb, var(--hp-gryffindor-deep) 92%, #000 8%)
+  );
+}
+
+.arcane-button-primary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--hp-ravenclaw-blue-bright) 74%, #fff 26%);
+  outline-offset: 1px;
+}
+
+.arcane-nav-button {
+  border: 1px solid color-mix(in srgb, var(--hp-slytherin-silver) 55%, #000 45%);
+  background: #17130f;
+  color: color-mix(in srgb, var(--hp-parchment) 74%, #fff 26%);
+  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+
+.arcane-nav-button:hover {
+  border-color: color-mix(in srgb, var(--hp-ravenclaw-bronze) 62%, #000 38%);
+  color: #fff;
+  background: #1b1611;
 }
