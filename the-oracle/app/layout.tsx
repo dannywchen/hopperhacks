@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Cinzel, Geist, Geist_Mono } from "next/font/google";
+import { BackgroundMusicProvider } from "@/components/audio/background-music-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -33,7 +34,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${cinzel.variable} antialiased`}
       >
-        {children}
+        <BackgroundMusicProvider>{children}</BackgroundMusicProvider>
       </body>
     </html>
   );

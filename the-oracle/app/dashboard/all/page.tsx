@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Press_Start_2P } from "next/font/google";
 import { Plus, Play, Edit2, Check, X } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import ClassicLoader from "@/components/ui/loader";
 import { Button } from "@/components/ui/button";
-import type { SimulationRun, SimulationMode, SimulationHorizonPreset } from "@/lib/types";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import type { SimulationRun, SimulationMode } from "@/lib/types";
 
 const retroFont = Press_Start_2P({
     subsets: ["latin"],
@@ -35,6 +36,10 @@ async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T>
     return payload as T;
 }
 
+function getErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : "Something went wrong.";
+}
+
 export default function AllSimulationsPage() {
     const router = useRouter();
     const [simulations, setSimulations] = useState<SimulationRun[]>([]);
@@ -43,14 +48,19 @@ export default function AllSimulationsPage() {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [newName, setNewName] = useState("");
     const [creating, setCreating] = useState(false);
+    const [showCreateDialog, setShowCreateDialog] = useState(false);
+    const activeSimulations = useMemo(
+        () => simulations.filter((simulation) => simulation.status === "active"),
+        [simulations],
+    );
 
     const fetchSimulations = useCallback(async () => {
         setLoading(true);
         try {
             const result = await authFetch<{ simulations: SimulationRun[] }>("/api/simulation?limit=50");
             setSimulations(result.simulations ?? []);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(getErrorMessage(err));
         } finally {
             setLoading(false);
         }
@@ -60,19 +70,20 @@ export default function AllSimulationsPage() {
         fetchSimulations();
     }, [fetchSimulations]);
 
-    const startNewSimulation = async () => {
+    const startNewSimulation = async (mode: SimulationMode) => {
         setCreating(true);
         try {
-            await authFetch<any>("/api/simulation", {
+            await authFetch<unknown>("/api/simulation", {
                 method: "POST",
                 body: JSON.stringify({
-                    mode: "manual_step",
+                    mode,
                     horizonPreset: "10_years",
                 }),
             });
+            setShowCreateDialog(false);
             router.push("/dashboard");
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(getErrorMessage(err));
         } finally {
             setCreating(false);
         }
@@ -87,16 +98,16 @@ export default function AllSimulationsPage() {
             });
             setSimulations(simulations.map((s: SimulationRun) => s.id === id ? { ...s, title: newName.trim() } : s));
             setEditingId(null);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(getErrorMessage(err));
         }
     };
 
     const playSimulation = async (id: string) => {
         try {
             router.push(`/dashboard?id=${id}`);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(getErrorMessage(err));
         }
     };
 
@@ -121,11 +132,11 @@ export default function AllSimulationsPage() {
                         </p>
                     </div>
                     <Button
-                        onClick={startNewSimulation}
+                        onClick={() => setShowCreateDialog(true)}
                         disabled={creating}
                         className="rounded-none border-2 border-white/20 hover:border-white transition-all bg-transparent text-white px-8 h-12 uppercase font-medium tracking-tight"
                     >
-                        {creating ? <ClassicLoader size="sm" /> : <><Plus className="w-4 h-4 mr-2" /> New Entry</>}
+                        {creating ? <ClassicLoader size="sm" /> : <><Plus className="w-4 h-4 mr-2" /> New Game</>}
                     </Button>
                 </div>
 
@@ -134,6 +145,39 @@ export default function AllSimulationsPage() {
                         {error}
                     </div>
                 )}
+
+                <section className="mb-10 border border-white/10 bg-white/[0.02] p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                            <p className="text-white text-xs uppercase tracking-[0.18em]">Active Simulations</p>
+                            <p className="mt-2 text-white/50 text-xs uppercase tracking-tight">
+                                Switch here, then dashboard opens the selected active run.
+                            </p>
+                        </div>
+                        <span className="text-[10px] uppercase tracking-[0.15em] text-white/40">
+                            {activeSimulations.length} active
+                        </span>
+                    </div>
+                    {activeSimulations.length > 0 ? (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            {activeSimulations.map((sim) => (
+                                <button
+                                    key={sim.id}
+                                    type="button"
+                                    onClick={() => void playSimulation(sim.id)}
+                                    className="inline-flex items-center gap-2 border border-white/25 bg-black px-3 py-2 text-xs uppercase tracking-wide text-white transition-colors hover:border-white/55 hover:bg-white/5"
+                                >
+                                    <Play className="h-3.5 w-3.5" />
+                                    {sim.title}
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="mt-4 text-xs uppercase tracking-widest text-white/35">
+                            No active simulations right now.
+                        </p>
+                    )}
+                </section>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 border-l border-t border-white/10">
                     {simulations.map((sim: SimulationRun) => (
@@ -205,12 +249,45 @@ export default function AllSimulationsPage() {
                     {simulations.length === 0 && !loading && (
                         <div className="col-span-full border-b border-r border-white/10 p-20 text-center">
                             <p className="text-white/20 uppercase tracking-widest text-xs">
-                                No simulation records found. Start a new entry to begin.
+                                No simulation records found. Start a new game to begin.
                             </p>
                         </div>
                     )}
                 </div>
             </div>
+
+            <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+                <DialogContent className="max-w-2xl bg-black border-white/10 text-white">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl uppercase tracking-wide">New Game</DialogTitle>
+                        <DialogDescription className="text-white/60">
+                            Select how you want to predict your future.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <button
+                            type="button"
+                            onClick={() => startNewSimulation("auto_future")}
+                            disabled={creating}
+                            className="text-left rounded-none border border-white/20 p-4 transition-colors hover:border-white/60 hover:bg-white/5 disabled:opacity-60"
+                        >
+                            <p className="text-sm font-semibold uppercase tracking-wide text-white">Auto Predict</p>
+                            <p className="mt-2 text-xs text-white/70">Auto predict my future in 10 years.</p>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => startNewSimulation("manual_step")}
+                            disabled={creating}
+                            className="text-left rounded-none border border-white/20 p-4 transition-colors hover:border-white/60 hover:bg-white/5 disabled:opacity-60"
+                        >
+                            <p className="text-sm font-semibold uppercase tracking-wide text-white">Manual Predict</p>
+                            <p className="mt-2 text-xs text-white/70">Manually predict my future myself.</p>
+                        </button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </main>
     );
 }

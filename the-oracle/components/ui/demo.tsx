@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Music2, VolumeX, X } from "lucide-react";
 import { motion, stagger, useAnimate } from "motion/react";
 import Floating, { FloatingElement } from "@/components/ui/parallax-floating";
 import ClassicLoader from "@/components/ui/loader";
+import { useBackgroundMusic } from "@/components/audio/background-music-provider";
 
 const exampleImages = [
   {
@@ -49,8 +50,7 @@ const imageBaseClasses =
 const Preview = () => {
   const [scope, animate] = useAnimate();
   const [isInfoOpen, setIsInfoOpen] = useState(false);
-  const [isMusicOn, setIsMusicOn] = useState(true);
-  const bgAudioRef = useRef<HTMLAudioElement | null>(null);
+  const { isMusicOn, toggleMusic } = useBackgroundMusic();
   const openInfoModal = useCallback(() => setIsInfoOpen(true), []);
   const closeInfoModal = useCallback(() => setIsInfoOpen(false), []);
 
@@ -71,53 +71,11 @@ const Preview = () => {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isInfoOpen]);
 
-  useEffect(() => {
-    const audio = bgAudioRef.current;
-    if (!audio) return;
-
-    if (isMusicOn) {
-      audio.muted = false;
-      void audio.play().catch(() => {
-        // Browsers may block autoplay until user gesture.
-      });
-      return;
-    }
-
-    audio.pause();
-    audio.muted = true;
-  }, [isMusicOn]);
-
-  useEffect(() => {
-    if (!isMusicOn) return;
-
-    const resumeAudio = () => {
-      const audio = bgAudioRef.current;
-      if (!audio) return;
-      audio.muted = false;
-      void audio.play().catch(() => {
-        // Ignore if browser still blocks playback.
-      });
-    };
-
-    window.addEventListener("pointerdown", resumeAudio, { once: true });
-    return () => window.removeEventListener("pointerdown", resumeAudio);
-  }, [isMusicOn]);
-
-  const toggleMusic = useCallback(() => {
-    setIsMusicOn((current) => !current);
-  }, []);
-
   return (
     <section
       ref={scope}
       className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-black"
     >
-      <audio
-        ref={bgAudioRef}
-        src="/Hedwig's Theme - John Williams.mp3"
-        preload="auto"
-        loop
-      />
       <button
         type="button"
         onClick={toggleMusic}
@@ -298,7 +256,7 @@ const Preview = () => {
               id="landing-project-title"
               className="arcane-display-title text-3xl font-extrabold uppercase leading-tight tracking-[0.07em] text-[#f7e9bf] [text-shadow:0_1px_0_#6a4c12,0_0_18px_rgba(238,186,48,0.32)] sm:text-4xl"
             >
-              About The Oracle Project & Team
+              The Oracle
             </h2>
 
             <div className="mt-6 grid gap-5 text-sm text-[#efe4c6]/90 sm:grid-cols-2 sm:gap-6 sm:text-base">
@@ -306,14 +264,22 @@ const Preview = () => {
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#eeba30]">
                   The Project
                 </h3>
-                <p className="leading-relaxed">placerholder text here</p>
+                <p className="leading-relaxed">
+                  Add personal context. Let LLM simulate how your life would change depending on the actions you take!
+                </p>
               </section>
 
               <section>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#eeba30]">
                   The Team
                 </h3>
-                <p className="leading-relaxed">placehodler text here</p>
+                <p className="leading-relaxed">
+                  Danny Chen
+                  <br />
+                  Melchai Mathew
+                  <br />
+                  John Hartmann
+                </p>
               </section>
             </div>
           </div>

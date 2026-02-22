@@ -18,6 +18,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { AIInputWithLoading } from "@/components/ui/ai-input-with-loading";
 import { AIVoiceInput } from "@/components/ui/ai-voice-input";
 import { Loader } from "@/components/ui/loader";
@@ -100,8 +102,8 @@ const STEP_CONTENT: Record<
     subtitle: "Pick Minimal for a fast setup, or Detailed for deeper personalization.",
   },
   resume: {
-    title: "Add Personal Details",
-    subtitle: "Upload your resume or import LinkedIn to quickly personalize your simulation.",
+    title: "The Oracle needs some context...",
+    subtitle: "Upload your resume or answer a few questions to quickly personalize your simulation.",
   },
   story: {
     title: "Guided Interview",
@@ -595,14 +597,12 @@ export function OnboardingWizard() {
     expression: "calm",
   });
   const [resumeText, setResumeText] = useState("");
-  const [linkedinUrl, setLinkedinUrl] = useState("");
-  const [linkedinText, setLinkedinText] = useState("");
-  const [linkedinProfile, setLinkedinProfile] =
-    useState<OnboardingLinkedinProfile | null>(null);
-  const [linkedinImportedUrl, setLinkedinImportedUrl] = useState("");
-  const [linkedinMeta, setLinkedinMeta] =
-    useState<LinkedinIngestResponse["meta"] | null>(null);
-  const [importingLinkedin, setImportingLinkedin] = useState(false);
+  const [career, setCareer] = useState("");
+  const [kids, setKids] = useState("");
+  const [sleep, setSleep] = useState("");
+  const [risk, setRisk] = useState("medium");
+  const [social, setSocial] = useState("ambivert");
+  const [extraNotes, setExtraNotes] = useState("");
   const [resumeMeta, setResumeMeta] = useState<ResumeMeta | null>(null);
   const [uploadingResume, setUploadingResume] = useState(false);
   const [lifeStory, setLifeStory] = useState("");
@@ -673,30 +673,18 @@ export function OnboardingWizard() {
     return 25;
   }, [stepId]);
 
-  const hasLinkedinUrl = useMemo(
-    () =>
-      /^(https?:\/\/)?(www\.)?linkedin\.com\/(in|pub)\/.+/i.test(
-        linkedinUrl.trim(),
-      ),
-    [linkedinUrl],
+  const hasManualSignal = useMemo(
+    () => career.trim().length > 0 && kids.trim().length > 0 && sleep.trim().length > 0,
+    [career, kids, sleep],
   );
-  const linkedinImportedForCurrentUrl = useMemo(() => {
-    if (!linkedinImportedUrl) return false;
-    return normalizeLinkedinUrl(linkedinImportedUrl) ===
-      normalizeLinkedinUrl(linkedinUrl);
-  }, [linkedinImportedUrl, linkedinUrl]);
+
   const onboardingResumeText = useMemo(() => {
-    const linkedInSignal = linkedinText
-      ? linkedinText.trim()
-      : hasLinkedinUrl
-        ? `LinkedIn URL: ${linkedinUrl.trim()}`
-        : "";
-    return [resumeText.trim(), linkedInSignal].filter(Boolean).join("\n\n");
-  }, [hasLinkedinUrl, linkedinText, linkedinUrl, resumeText]);
+    return resumeText.trim();
+  }, [resumeText]);
   const storyCharCount = useMemo(() => lifeStory.trim().length, [lifeStory]);
   const hasResumeSignal = useMemo(
-    () => resumeText.trim().length > RESUME_MIN_CHARS || linkedinImportedForCurrentUrl,
-    [linkedinImportedForCurrentUrl, resumeText],
+    () => resumeText.trim().length > RESUME_MIN_CHARS || hasManualSignal,
+    [hasManualSignal, resumeText],
   );
   const interviewAnswerCount = useMemo(
     () =>
@@ -1096,16 +1084,7 @@ export function OnboardingWizard() {
     setStepIndex((index) => Math.min(index, Math.max(steps.length - 1, 0)));
   }, [steps.length]);
 
-  useEffect(() => {
-    if (!linkedinImportedUrl) return;
-    if (normalizeLinkedinUrl(linkedinImportedUrl) === normalizeLinkedinUrl(linkedinUrl)) {
-      return;
-    }
-    setLinkedinImportedUrl("");
-    setLinkedinProfile(null);
-    setLinkedinMeta(null);
-    setLinkedinText("");
-  }, [linkedinImportedUrl, linkedinUrl]);
+
 
   const applyInterviewResponse = useCallback((
     response: InterviewApiResponse,
@@ -1261,39 +1240,10 @@ export function OnboardingWizard() {
       });
       setResumeText(result.text);
       setResumeMeta(result.meta);
-      if (result.profile) {
-        setLinkedinProfile(result.profile);
-      }
     } catch (err: any) {
       setError(err?.message ?? "Could not parse resume.");
     } finally {
       setUploadingResume(false);
-    }
-  }
-
-  async function handleLinkedinIngest() {
-    const normalizedUrl = normalizeLinkedinUrl(linkedinUrl);
-    if (!normalizedUrl) return;
-    setError(null);
-    setImportingLinkedin(true);
-    try {
-      const result = await fetchJson<LinkedinIngestResponse>("/api/intake/linkedin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          profileUrl: normalizedUrl,
-        }),
-        timeoutMs: 120_000,
-      });
-      setLinkedinUrl(normalizedUrl);
-      setLinkedinImportedUrl(normalizedUrl);
-      setLinkedinProfile(result.profile);
-      setLinkedinMeta(result.meta);
-      setLinkedinText(result.text);
-    } catch (err: any) {
-      setError(err?.message ?? "Could not import LinkedIn profile.");
-    } finally {
-      setImportingLinkedin(false);
     }
   }
 
@@ -1325,7 +1275,7 @@ export function OnboardingWizard() {
 
   function goToSimulationStep() {
     if (onboardingPath === "minimal" && !hasResumeSignal) {
-      setError("Upload a resume or import LinkedIn first.");
+      setError("Upload a resume or answer the required questions first.");
       return;
     }
     const simulationStepIndex = steps.indexOf("simulation");
@@ -1356,12 +1306,18 @@ export function OnboardingWizard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: [onboardingResumeText, lifeStory].filter(Boolean).join("\n\n"),
+          text: [
+            onboardingResumeText,
+            lifeStory,
+            hasManualSignal ? `Supplemental Memory Data:\n- Career: ${career}\n- Kids: ${kids}\n- Sleep: ${sleep}\n- Risk: ${risk}\n- Personality: ${social}${extraNotes ? `\n- Extra: ${extraNotes}` : ""}` : ""
+          ].filter(Boolean).join("\n\n"),
           onboarding: {
             avatar,
             resumeText: onboardingResumeText || null,
-            linkedinProfile: linkedinProfile ?? null,
-            lifeStory: lifeStory || null,
+            lifeStory: [
+              lifeStory,
+              hasManualSignal ? `Supplemental Memory Data:\n- Career: ${career}\n- Kids: ${kids}\n- Sleep: ${sleep}\n- Risk: ${risk}\n- Personality: ${social}${extraNotes ? `\n- Extra: ${extraNotes}` : ""}` : ""
+            ].filter(Boolean).join("\n\n") || null,
             interviewMessages,
             reflections: interviewReflections,
             simulationMode: simMode,
@@ -1548,7 +1504,7 @@ export function OnboardingWizard() {
                       className={`mt-3 max-w-[36ch] list-disc space-y-1.5 pl-5 pr-14 text-[0.93rem] leading-relaxed ${onboardingPath === "minimal" ? "text-zinc-100" : "text-zinc-300"
                         }`}
                     >
-                      <li>Upload your resume or import LinkedIn.</li>
+                      <li>Upload your resume or answer a few questions.</li>
                       <li>Add a short text description about yourself.</li>
                       <li>Choose simulation settings and continue.</li>
                     </ul>
@@ -1669,29 +1625,64 @@ export function OnboardingWizard() {
                   </div>
 
                   <div className="p-1">
-                    <p className="text-sm text-zinc-200">Import LinkedIn URL</p>
-                    <div className="mt-3 space-y-2">
-                      <Input
-                        value={linkedinUrl}
-                        onChange={(event) => setLinkedinUrl(event.target.value)}
-                        placeholder="https://www.linkedin.com/in/dannywchen/"
-                        className="w-full max-w-[460px] rounded-lg border-0 bg-zinc-800 text-zinc-100 placeholder:text-zinc-500 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)] focus-visible:ring-0 focus-visible:ring-offset-0"
-                      />
-                      <Button
-                        type="button"
-                        onClick={() => void handleLinkedinIngest()}
-                        disabled={!hasLinkedinUrl || importingLinkedin}
-                        className="arcane-button-secondary h-9 rounded-lg px-4 disabled:opacity-40"
-                      >
-                        {importingLinkedin ? "Importing..." : "Import"}
-                      </Button>
+                    <p className="text-sm text-zinc-200">Answer a few questions</p>
+                    <div className="mt-3 space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="career" className="text-zinc-300 text-xs">1. What career path or job do you want?</Label>
+                        <Input id="career" value={career} onChange={e => setCareer(e.target.value)} placeholder="e.g. Software Engineer, Biologist, Nurse, etc." className="w-full rounded-lg border-0 bg-zinc-800 text-zinc-100 placeholder:text-zinc-500 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)] focus-visible:ring-0 focus-visible:ring-offset-0 h-9" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="kids" className="text-zinc-300 text-xs">2. Do you want to have kids?</Label>
+                        <Input id="kids" value={kids} onChange={e => setKids(e.target.value)} placeholder="e.g. Yes, 2 kids in my 30s. Or: No, never." className="w-full rounded-lg border-0 bg-zinc-800 text-zinc-100 placeholder:text-zinc-500 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)] focus-visible:ring-0 focus-visible:ring-offset-0 h-9" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="sleep" className="text-zinc-300 text-xs">3. Average hours of sleep you get</Label>
+                        <Input id="sleep" type="number" value={sleep} onChange={e => setSleep(e.target.value)} placeholder="e.g. 7" className="w-full rounded-lg border-0 bg-zinc-800 text-zinc-100 placeholder:text-zinc-500 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)] focus-visible:ring-0 focus-visible:ring-offset-0 h-9" />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-zinc-300 text-xs">4. Risk Tolerance</Label>
+                        <RadioGroup value={risk} onValueChange={setRisk} className="flex gap-4">
+                          <div className="flex items-center space-x-1.5">
+                            <RadioGroupItem value="low" id="r1" className="border-zinc-500 text-amber-200 data-[state=checked]:border-amber-200" />
+                            <Label htmlFor="r1" className="text-zinc-400 text-xs cursor-pointer">Play it safe</Label>
+                          </div>
+                          <div className="flex items-center space-x-1.5">
+                            <RadioGroupItem value="medium" id="r2" className="border-zinc-500 text-amber-200 data-[state=checked]:border-amber-200" />
+                            <Label htmlFor="r2" className="text-zinc-400 text-xs cursor-pointer">Calculated</Label>
+                          </div>
+                          <div className="flex items-center space-x-1.5">
+                            <RadioGroupItem value="high" id="r3" className="border-zinc-500 text-amber-200 data-[state=checked]:border-amber-200" />
+                            <Label htmlFor="r3" className="text-zinc-400 text-xs cursor-pointer">Very risky</Label>
+                          </div>
+                        </RadioGroup>
+                      </div>
+
+                      <div className="space-y-2 pb-1">
+                        <Label className="text-zinc-300 text-xs">5. Personality</Label>
+                        <RadioGroup value={social} onValueChange={setSocial} className="flex gap-4">
+                          <div className="flex items-center space-x-1.5">
+                            <RadioGroupItem value="introvert" id="s1" className="border-zinc-500 text-amber-200 data-[state=checked]:border-amber-200" />
+                            <Label htmlFor="s1" className="text-zinc-400 text-xs cursor-pointer">Introvert</Label>
+                          </div>
+                          <div className="flex items-center space-x-1.5">
+                            <RadioGroupItem value="ambivert" id="s2" className="border-zinc-500 text-amber-200 data-[state=checked]:border-amber-200" />
+                            <Label htmlFor="s2" className="text-zinc-400 text-xs cursor-pointer">Ambivert</Label>
+                          </div>
+                          <div className="flex items-center space-x-1.5">
+                            <RadioGroupItem value="extrovert" id="s3" className="border-zinc-500 text-amber-200 data-[state=checked]:border-amber-200" />
+                            <Label htmlFor="s3" className="text-zinc-400 text-xs cursor-pointer">Extrovert</Label>
+                          </div>
+                        </RadioGroup>
+                      </div>
+
+                      <div className="space-y-1.5 pb-2">
+                        <Label htmlFor="extraNotes" className="text-zinc-300 text-xs">Extra notes (optional)</Label>
+                        <Textarea id="extraNotes" value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder="Any additional details you want the Oracle to know..." className="w-full rounded-lg border-0 bg-zinc-800 text-zinc-100 placeholder:text-zinc-500 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)] focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[60px] resize-none text-sm" />
+                      </div>
                     </div>
-                    {linkedinImportedForCurrentUrl && linkedinProfile ? (
-                      <p className="mt-2 text-xs text-zinc-400">
-                        Imported profile
-                        {linkedinProfile.fullName ? `: ${linkedinProfile.fullName}` : ""}.
-                      </p>
-                    ) : null}
                   </div>
                 </div>
               </div>

@@ -193,24 +193,24 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="mystic-bg min-h-screen px-4 py-5 text-zinc-100 sm:px-6">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
-        <header className="rounded-2xl border border-cyan-200/25 bg-[linear-gradient(130deg,rgba(7,17,31,0.96),rgba(10,27,50,0.92))] p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+    <main className="mystic-bg min-h-screen px-3 py-4 text-zinc-100 sm:px-6 sm:py-5">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 sm:gap-4">
+        <header className="rounded-2xl border border-cyan-200/25 bg-[linear-gradient(130deg,rgba(7,17,31,0.96),rgba(10,27,50,0.92))] p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
             <div>
-              <h1 className="arcane-display-title mt-1 text-3xl text-zinc-50">Settings</h1>
+              <h1 className="arcane-display-title mt-1 text-2xl text-zinc-50 sm:text-3xl">Settings</h1>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
               <Link
                 href="/dashboard"
-                className="inline-flex h-9 items-center rounded-full border border-cyan-200/40 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100 transition hover:border-cyan-100/80 hover:bg-cyan-500/10"
+                className="inline-flex h-10 w-full items-center justify-center rounded-full border border-cyan-200/40 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100 transition hover:border-cyan-100/80 hover:bg-cyan-500/10 sm:h-9 sm:w-auto"
               >
                 Back to Dashboard
               </Link>
               <Button
                 type="button"
                 onClick={() => void logout()}
-                className="h-9 rounded-full bg-rose-400/90 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-950 hover:bg-rose-300"
+                className="h-10 w-full rounded-full bg-rose-400/90 px-4 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-950 hover:bg-rose-300 sm:h-9 sm:w-auto"
               >
                 <LogOut className="mr-1 h-4 w-4" />
                 Log Out
@@ -220,7 +220,7 @@ export default function SettingsPage() {
         </header>
 
         <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <section className="rounded-2xl border border-white/10 bg-zinc-900/75 p-4">
+          <section className="rounded-2xl border border-white/10 bg-zinc-900/75 p-3.5 sm:p-4">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm font-semibold text-zinc-100">Agent Memory</p>
               <span className="text-xs text-zinc-400">{memories.length} entries</span>
@@ -228,16 +228,18 @@ export default function SettingsPage() {
 
             <div className="space-y-4">
               {Object.entries(groupedMemory).map(([category, entries]) => (
-                <div key={category} className="rounded-xl border border-white/10 bg-zinc-950/60 p-3">
+                <div key={category} className="rounded-xl border border-white/10 bg-zinc-950/60 p-2.5 sm:p-3">
                   <p className="text-xs uppercase tracking-[0.14em] text-cyan-200/90">{category}</p>
                   <div className="mt-2 space-y-2.5">
                     {entries.map((memory) => {
                       const isEditing = editingKey === memory.key;
                       return (
-                        <div key={memory.key} className="rounded-lg border border-white/10 bg-zinc-900/75 p-3">
+                        <div key={memory.key} className="rounded-lg border border-white/10 bg-zinc-900/75 p-2.5 sm:p-3">
                           <div className="mb-2 flex items-center justify-between gap-2">
-                            <p className="font-mono text-xs text-zinc-300">{memory.key}</p>
-                            <div className="flex items-center gap-2">
+                            <p className="min-w-0 flex-1 truncate pr-2 font-mono text-xs text-zinc-300" title={memory.key}>
+                              {memory.key}
+                            </p>
+                            <div className="flex shrink-0 items-center gap-2">
                               <button
                                 type="button"
                                 onClick={() => beginEdit(memory)}
@@ -276,7 +278,9 @@ export default function SettingsPage() {
                             </div>
                           ) : (
                             <>
-                              <p className="text-sm leading-relaxed text-zinc-200">{memory.content}</p>
+                              <p className="break-words text-sm leading-relaxed text-zinc-200 [overflow-wrap:anywhere]">
+                                {memory.content}
+                              </p>
                               <p className="mt-2 text-[11px] text-zinc-400">
                                 Importance: {memory.importance ?? 60}
                               </p>
@@ -292,7 +296,7 @@ export default function SettingsPage() {
           </section>
 
           <aside className="space-y-4">
-            <section className="rounded-2xl border border-white/10 bg-zinc-900/75 p-4">
+            <section className="rounded-2xl border border-white/10 bg-zinc-900/75 p-3.5 sm:p-4">
               <p className="text-sm font-semibold text-zinc-100">Add Memory</p>
               <div className="mt-3 space-y-2">
                 <Input

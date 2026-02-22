@@ -384,6 +384,9 @@ async function generateAutoTrajectoryPlan(params: {
     "You are planning a future life simulation trajectory.",
     "Return strict JSON only.",
     "Do not include numeric metric deltas. Metrics are computed by a deterministic backend model.",
+    "For milestone.story and recurringActions.description, write realistic storyline sentences about concrete behaviors and decisions.",
+    "Avoid meta narration words like 'trajectory', 'simulation', 'story', 'changelog', or references to score/metrics.",
+    "Use second person ('you'). Keep language grounded and specific to what someone would actually do in life.",
     `Mode: ${params.modeTitle}`,
     `Horizon preset: ${params.horizonPreset}`,
     `Requested timeline nodes: ${params.nodeCount}`,
@@ -430,7 +433,7 @@ function fallbackAutoPlan(targetOutcome: string) {
     recurringActions: [
       {
         title: "Execute focused weekly sprint",
-        description: `You make clear weekly plans ${narrative}.`,
+        description: `Every Sunday, you plan your week around 2-3 priorities ${narrative}.`,
       },
       {
         title: "Invest in core relationships",
@@ -438,28 +441,28 @@ function fallbackAutoPlan(targetOutcome: string) {
       },
       {
         title: "Protect health baseline",
-        description: "You preserve sleep and movement to maintain compounding performance.",
+        description: "You block sleep, movement, and meal prep before adding extra commitments.",
       },
       {
         title: "Audit spending and reallocate",
-        description: "You trim reactive spending and move money toward higher-leverage bets.",
+        description: "On payday, you trim reactive spending and auto-transfer money into long-term priorities.",
       },
     ],
     milestones: [
       {
         offset: 4,
         title: "Breakthrough project",
-        story: "A compounding project starts attracting external opportunities.",
+        story: "You ship a visible project, share it publicly, and start getting inbound opportunities.",
       },
       {
         offset: 11,
         title: "Life admin reset",
-        story: "You restructure routines after overload signals and recover momentum.",
+        story: "After a stressful stretch, you cut low-value obligations and rebuild a sustainable weekly rhythm.",
       },
       {
         offset: 17,
         title: "Financial inflection",
-        story: "A disciplined streak meaningfully raises your net worth slope.",
+        story: "Consistent saving and better negotiation habits create a clear jump in your financial cushion.",
       },
     ],
   };
@@ -511,10 +514,9 @@ function buildAutoProjectionNodes(params: {
 
     const pointInTime = new Date(params.startDate);
     pointInTime.setUTCDate(pointInTime.getUTCDate() + dayIncrement * index);
-    const storyLead = milestone
-      ? `Milestone: ${cleanText(milestone.story, 280)}`
-      : `${actionDetails} This keeps compounding over time.`;
-    const story = `${storyLead} The simulated trajectory remains ${params.plan.tone}.`;
+    const story = milestone
+      ? cleanText(milestone.story, 280)
+      : cleanText(`${actionDetails} This keeps compounding over time.`, 280);
 
     nodes.push({
       simulation_id: params.simulationId,

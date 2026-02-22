@@ -9,6 +9,9 @@ import {
   Clock3,
   Download,
   Flag,
+  Music2,
+  VolumeX,
+  X,
   PlusCircle,
   Settings,
   Sparkles,
@@ -24,6 +27,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import ClassicLoader from "@/components/ui/loader";
 import { Textarea } from "@/components/ui/textarea";
 import { SpriteEditModal } from "@/components/dashboard/sprite-edit-modal";
+import { useBackgroundMusic } from "@/components/audio/background-music-provider";
 import styles from "./dashboard.module.css";
 import type {
   OnboardingAvatar,
@@ -277,7 +281,6 @@ function DashboardContent() {
     if (typeof window === "undefined") return null;
     return loadSetup();
   });
-  const [simulations, setSimulations] = useState<SimulationRun[]>([]);
   const [activeRun, setActiveRun] = useState<SimulationRun | null>(null);
   const [nodes, setNodes] = useState<SimulationNode[]>([]);
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
@@ -302,6 +305,7 @@ function DashboardContent() {
   const [loadingPhraseIndex, setLoadingPhraseIndex] = useState(0);
   const [showTutorial, setShowTutorial] = useState(false);
   const [isSpriteEditModalOpen, setIsSpriteEditModalOpen] = useState(false);
+  const { isMusicOn, toggleMusic } = useBackgroundMusic();
 
   const avatar = useMemo(() => asAvatar(setup), [setup]);
   const latestNode = nodes[nodes.length - 1] ?? null;
@@ -396,7 +400,6 @@ function DashboardContent() {
         setSetup(loadSetup());
       }
 
-      setSimulations(listResult.simulations ?? []);
       if (listResult.activeSimulation) {
         setActiveRun(listResult.activeSimulation.run);
         setNodes(listResult.activeSimulation.nodes ?? []);
@@ -426,6 +429,8 @@ function DashboardContent() {
       setWrapSummary((detail.run.summary?.wrap as EndSimulationResponse["wrap"]) ?? null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unable to switch simulation.");
+      setActiveRun(null);
+      setNodes([]);
     }
   }, []);
 
@@ -444,8 +449,6 @@ function DashboardContent() {
       const createdNodes = created.nodes ?? [];
       setNodes(createdNodes);
       setFocusedNodeId(createdNodes.length ? createdNodes[createdNodes.length - 1].id : null);
-      const refreshed = await authFetch<SimulationListResponse>("/api/simulation?limit=50");
-      setSimulations(refreshed.simulations ?? []);
       setWrapSummary(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unable to create simulation.");
@@ -496,7 +499,14 @@ function DashboardContent() {
 
   useEffect(() => {
     if (forcedId) {
-      void selectSimulation(forcedId);
+      setBootLoading(true);
+      void (async () => {
+        try {
+          await selectSimulation(forcedId);
+        } finally {
+          setBootLoading(false);
+        }
+      })();
     } else {
       void bootDashboard();
     }
@@ -516,8 +526,6 @@ function DashboardContent() {
       setFocusedNodeId(endedNodes.length ? endedNodes[endedNodes.length - 1].id : null);
       setWrapSummary(result.wrap ?? null);
       setShowEndDialog(true);
-      const refreshed = await authFetch<SimulationListResponse>("/api/simulation?limit=50");
-      setSimulations(refreshed.simulations ?? []);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Unable to end simulation.");
     } finally {
@@ -685,15 +693,17 @@ function DashboardContent() {
       <main
         className={`${styles.page} ${showOnboardingTransition ? styles.pageHidden : ""} ${isWrapVisible ? styles.pageScrollable : ""}`}
       >
+        <button
+          type="button"
+          onClick={toggleMusic}
+          aria-pressed={isMusicOn}
+          aria-label={isMusicOn ? "Mute background music" : "Unmute background music"}
+          className={`${styles.musicToggleDesktop} inline-flex items-center gap-2 rounded-full border border-white/30 bg-black/45 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white transition hover:border-white/60 hover:bg-black/65`}
+        >
+          {isMusicOn ? <Music2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+          <span>Music {isMusicOn ? "On" : "Off"}</span>
+        </button>
         <div className={styles.mobileHeader}>
-          <button
-            type="button"
-            onClick={() => setShowMobileStats(!showMobileStats)}
-            className={styles.mobileStatsToggle}
-          >
-            <BarChart3 className="h-4 w-4" />
-            Stats
-          </button>
           <div className={styles.mobileTopActions}>
             <Link href="/settings" className={styles.sideAction}>
               <Settings className="h-4 w-4" />
@@ -707,7 +717,27 @@ function DashboardContent() {
               <Flag className="h-4 w-4" />
               {endingSimulation ? <ClassicLoader size="sm" /> : "End"}
             </Button>
+            <button
+              type="button"
+              onClick={toggleMusic}
+              aria-pressed={isMusicOn}
+              aria-label={isMusicOn ? "Mute background music" : "Unmute background music"}
+              className={styles.mobileMusicToggle}
+            >
+              {isMusicOn ? <Music2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+              <span>Music {isMusicOn ? "On" : "Off"}</span>
+            </button>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowMobileStats(!showMobileStats)}
+            className={styles.mobileStatsToggle}
+            aria-expanded={showMobileStats}
+            aria-controls="mobile-stats-drawer"
+          >
+            <BarChart3 className="h-4 w-4" />
+            {showMobileStats ? "Close" : "Stats"}
+          </button>
         </div>
 
         <div className={styles.shell}>
@@ -758,7 +788,7 @@ function DashboardContent() {
                         </div>
                       </div>
                       <div className={`${styles.bubbleContainer} ${isWrapVisible ? styles.bubbleContainerWrapVisible : ""}`}>
-                        <p className={styles.bubbleTitle}>Story + changelog</p>
+                        <p className={styles.bubbleTitle}>{activeRun.mode === "auto_future" ? "Storyline" : "Story + changelog"}</p>
                         <p className={styles.bubbleBody}>{headlineStory}</p>
                         <div className={styles.changeList}>
                           {changelog.length > 0 ? (
@@ -847,29 +877,36 @@ function DashboardContent() {
                   </div>
                 </section>
 
-                <aside className={`${styles.statsPanel} ${showMobileStats ? styles.statsPanelMobileOpen : ""}`}>
-                  <button
-                    type="button"
-                    className={styles.mobileDrawerClose}
-                    onClick={() => setShowMobileStats(false)}
-                  >
-                    ×
-                  </button>
+                <aside id="mobile-stats-drawer" className={`${styles.statsPanel} ${showMobileStats ? styles.statsPanelMobileOpen : ""}`}>
                   <div className={styles.statsHeader}>
                     <p className={styles.statsTitle}>Stats</p>
-                    <div className={`${styles.statsActions} sm:flex hidden`}>
-                      <Link href="/settings" className={styles.sideAction}>
-                        <Settings className="h-4 w-4" />
-                        Settings
-                      </Link>
+                    <div className={styles.statsActions}>
+                      <Button asChild type="button" variant="outline" size="sm" className={styles.sideAction}>
+                        <Link href="/settings">
+                          <Settings className="h-4 w-4" />
+                          Settings
+                        </Link>
+                      </Button>
                       <Button
                         type="button"
+                        variant="outline"
+                        size="sm"
                         onClick={() => void endGame()}
                         disabled={activeRun.status === "ended" || endingSimulation}
                         className={styles.sideEndButton}
                       >
                         <Flag className="h-4 w-4" />
                         {endingSimulation ? <ClassicLoader size="sm" /> : "End"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className={styles.mobileDrawerClose}
+                        onClick={() => setShowMobileStats(false)}
+                        aria-label="Close stats"
+                      >
+                        <X className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>

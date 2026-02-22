@@ -30,7 +30,8 @@ export function TutorialModal({ open, onOpenChange, setup, onComplete }: Tutoria
     const needsExtraData =
         !setup?.onboarding?.resumeText &&
         !setup?.onboarding?.linkedinProfile &&
-        (!setup?.onboarding?.interviewMessages || setup.onboarding.interviewMessages.length === 0);
+        (!setup?.onboarding?.interviewMessages || setup.onboarding.interviewMessages.length === 0) &&
+        (!setup?.onboarding?.lifeStory || !setup.onboarding.lifeStory.includes("Supplemental Memory Data:"));
 
     const [slide, setSlide] = useState(0);
     const [loading, setLoading] = useState(false);
