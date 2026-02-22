@@ -17,7 +17,6 @@ const mockState = {
   age: 28,
   health: 70,
   stress: 65,
-  happiness: 45,
   free_time: 20,
   net_worth: 12000,
   monthly_income: 4500,
@@ -71,7 +70,6 @@ PLAYER STATS:
 - Age: ${mockState.age}
 - Health: ${mockState.health}/100
 - Stress: ${mockState.stress}/100
-- Happiness: ${mockState.happiness}/100
 - Free Time: ${mockState.free_time}/100
 - Net Worth: $${mockState.net_worth}
 - Monthly Income: $${mockState.monthly_income}
@@ -95,19 +93,19 @@ Respond with valid JSON only — no markdown, no backticks:
       "title": "Decision title",
       "description": "What this involves",
       "outcome": "Likely result",
-      "deltas": { "stress": 0, "happiness": 0, "health": 0, "net_worth": 0, "salary": 0 }
+      "deltas": { "stress": 0, "health": 0, "net_worth": 0, "salary": 0 }
     },
     {
       "title": "Decision title",
       "description": "What this involves",
       "outcome": "Likely result",
-      "deltas": { "stress": 0, "happiness": 0, "health": 0, "net_worth": 0, "salary": 0 }
+      "deltas": { "stress": 0, "health": 0, "net_worth": 0, "salary": 0 }
     },
     {
       "title": "Decision title",
       "description": "What this involves",
       "outcome": "Likely result",
-      "deltas": { "stress": 0, "happiness": 0, "health": 0, "net_worth": 0, "salary": 0 }
+      "deltas": { "stress": 0, "health": 0, "net_worth": 0, "salary": 0 }
     }
   ]
 }
@@ -145,7 +143,6 @@ You are a life coach AI. Write a short honest summary of this person's life.
 PLAYER STATS:
 - Age: ${mockState.age}
 - Stress: ${mockState.stress}/100
-- Happiness: ${mockState.happiness}/100
 - Net Worth: $${mockState.net_worth}
 - Career: ${mockState.job_title}
 - City: ${mockState.city}
