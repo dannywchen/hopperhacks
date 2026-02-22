@@ -1,6 +1,56 @@
 import { getSupabaseAdmin } from './supabase'
 
 const clamp = (val, min = 0, max = 100) => Math.min(max, Math.max(min, val))
+const NO_ROWS_CODE = 'PGRST116'
+
+function isNoRowsError(error) {
+  return error?.code === NO_ROWS_CODE
+}
+
+function baseGameState(profileId) {
+  return {
+    profile_id: profileId,
+    age: 18,
+    stress: 50,
+    happiness: 50,
+    health: 50,
+    free_time: 50,
+    net_worth: 0,
+    salary: 0,
+    career_xp: 0,
+    decision_count: 0,
+    last_saved_at: new Date().toISOString(),
+  }
+}
+
+function getSetupPayload(row) {
+  const value = row?.setup_json
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  return value
+}
+
+export async function ensureUserBootstrap(profileId) {
+  const supabaseAdmin = getSupabaseAdmin()
+  const defaultState = baseGameState(profileId)
+
+  const [stateResult, settingsResult, setupResult] = await Promise.all([
+    supabaseAdmin
+      .from('game_state')
+      .upsert(defaultState, { onConflict: 'profile_id', ignoreDuplicates: true }),
+    supabaseAdmin
+      .from('game_settings')
+      .upsert({ profile_id: profileId }, { onConflict: 'profile_id', ignoreDuplicates: true }),
+    supabaseAdmin
+      .from('user_setups')
+      .upsert({ profile_id: profileId }, { onConflict: 'profile_id', ignoreDuplicates: true }),
+  ])
+
+  if (stateResult.error) throw stateResult.error
+  if (settingsResult.error) throw settingsResult.error
+  if (setupResult.error) throw setupResult.error
+}
 
 // ─────────────────────────────────────────────
 // GAME STATE
@@ -12,23 +62,24 @@ export async function loadGameState(profileId) {
     .from('game_state')
     .select('*')
     .eq('profile_id', profileId)
-    .single()
-  if (error) throw error
-  return data
+    .maybeSingle()
+  if (error && !isNoRowsError(error)) throw error
+  return data ?? baseGameState(profileId)
 }
 
 export async function saveGameState(profileId, updates) {
   const supabaseAdmin = getSupabaseAdmin()
-  const { data: current } = await supabaseAdmin
+  const { data: current, error: currentError } = await supabaseAdmin
     .from('game_state')
     .select('decision_count')
     .eq('profile_id', profileId)
-    .single()
+    .maybeSingle()
+  if (currentError && !isNoRowsError(currentError)) throw currentError
 
   const { data, error } = await supabaseAdmin
     .from('game_state')
     .upsert({
-      profile_id: profileId,
+      ...baseGameState(profileId),
       ...updates,
       decision_count: (current?.decision_count ?? 0) + 1,
       last_saved_at: new Date().toISOString(),
@@ -135,17 +186,57 @@ export async function loadGameSettings(profileId) {
   const supabaseAdmin = getSupabaseAdmin()
   const { data, error } = await supabaseAdmin
     .from('game_settings')
-    .select('*')
+    .select('settings, updated_at')
     .eq('profile_id', profileId)
-    .single()
-  if (error) throw error
-  return data
+    .maybeSingle()
+  if (error && !isNoRowsError(error)) throw error
+  return data?.settings ?? {}
 }
 
 export async function saveGameSettings(profileId, settings) {
   const supabaseAdmin = getSupabaseAdmin()
   const { error } = await supabaseAdmin
     .from('game_settings')
-    .upsert({ profile_id: profileId, ...settings }, { onConflict: 'profile_id' })
+    .upsert(
+      {
+        profile_id: profileId,
+        settings: settings ?? {},
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'profile_id' }
+    )
+  if (error) throw error
+}
+
+// ─────────────────────────────────────────────
+// USER SETUP
+// ─────────────────────────────────────────────
+
+export async function loadUserSetup(profileId) {
+  const supabaseAdmin = getSupabaseAdmin()
+  const { data, error } = await supabaseAdmin
+    .from('user_setups')
+    .select('setup_json, updated_at')
+    .eq('profile_id', profileId)
+    .maybeSingle()
+  if (error && !isNoRowsError(error)) throw error
+  return {
+    setup: getSetupPayload(data),
+    updatedAt: data?.updated_at ?? null,
+  }
+}
+
+export async function saveUserSetup(profileId, setup) {
+  const supabaseAdmin = getSupabaseAdmin()
+  const { error } = await supabaseAdmin
+    .from('user_setups')
+    .upsert(
+      {
+        profile_id: profileId,
+        setup_json: setup,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'profile_id' }
+    )
   if (error) throw error
 }

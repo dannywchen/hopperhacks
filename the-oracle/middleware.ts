@@ -1,18 +1,8 @@
 import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
-  const token = request.cookies.get('sb-access-token')?.value ||
-    request.cookies.get('supabase-auth-token')?.value;
-
-  const isProtectedRoute =
-    request.nextUrl.pathname.startsWith('/onboarding') ||
-    request.nextUrl.pathname.startsWith('/dashboard');
-
-  if (isProtectedRoute && !token) {
-    return NextResponse.redirect(new URL('/login', request.url));
-  }
-
+export function middleware() {
+  // Supabase browser auth session is stored client-side in this app flow.
+  // Route auth is enforced by API token checks and page-level bootstrap checks.
   return NextResponse.next();
 }
 

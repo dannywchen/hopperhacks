@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getAuthUser } from "@/lib/auth";
+import { saveAgentMemory } from "@/lib/game-db";
 
 export const runtime = "nodejs";
 
@@ -75,6 +77,11 @@ function extractPlainText(buffer: Buffer) {
 
 export async function POST(req: Request) {
   try {
+    const user = await getAuthUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const form = await req.formData();
     const rawFile = form.get("file");
     if (!(rawFile instanceof File)) {
@@ -127,6 +134,14 @@ export async function POST(req: Request) {
         { status: 422 },
       );
     }
+
+    await saveAgentMemory({
+      profile_id: user.id,
+      category: "onboarding_intake",
+      key: "onboarding_resume_latest",
+      content: text.slice(0, 12_000),
+      importance: 90,
+    });
 
     return NextResponse.json({
       text,
