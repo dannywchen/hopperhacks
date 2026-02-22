@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { INTERVIEW_DOMAINS, interviewDomainById } from "@/lib/onboarding/config";
 import {
+  estimateSimulationAccuracy,
   interviewReflectionLayerSchema,
   interviewRequestSchema,
   interviewStrategistLayerSchema,
@@ -130,6 +131,81 @@ function extractJsonObject(rawText: string) {
   return rawText.trim();
 }
 
+function safeParseInterviewJson(rawText: string): {
+  reflections?: unknown;
+  nextPrompt?: unknown;
+} {
+  const candidate = extractJsonObject(rawText)
+    .replace(/^\uFEFF/, "")
+    .replace(/\u0000/g, "")
+    .trim();
+  try {
+    return JSON.parse(candidate) as {
+      reflections?: unknown;
+      nextPrompt?: unknown;
+    };
+  } catch (firstError) {
+    const sanitized = candidate
+      .replace(/,\s*([}\]])/g, "$1")
+      .replace(/[\u0000-\u0019]+/g, " ");
+    try {
+      return JSON.parse(sanitized) as {
+        reflections?: unknown;
+        nextPrompt?: unknown;
+      };
+    } catch {
+      throw firstError;
+    }
+  }
+}
+
+async function requestGeminiCandidateText(params: {
+  model: string;
+  apiKey: string;
+  prompt: string;
+}): Promise<string> {
+  const response = await fetch(
+    `${GEMINI_API_BASE}/${encodeURIComponent(params.model)}:generateContent?key=${encodeURIComponent(params.apiKey)}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: params.prompt }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.35,
+          maxOutputTokens: 1400,
+          responseMimeType: "application/json",
+        },
+      }),
+    },
+  );
+
+  const payload = (await response
+    .json()
+    .catch(() => null)) as GeminiGenerateResponse | null;
+
+  if (!response.ok) {
+    const detail = payload?.error?.message || `Gemini request failed with status ${response.status}.`;
+    throw new Error(detail);
+  }
+
+  const candidateText = payload?.candidates?.[0]?.content?.parts
+    ?.map((part) => part?.text ?? "")
+    .join("")
+    .trim();
+  if (!candidateText) {
+    throw new Error("Gemini returned an empty response.");
+  }
+  return candidateText;
+}
+
 function tokenize(text: string) {
   return text
     .toLowerCase()
@@ -224,7 +300,7 @@ async function generateInterviewTurnWithGemini(input: {
 
   const model = REQUIRED_GEMINI_MODEL;
   const answerAssessment = assessLatestAnswer(input.messages);
-  const prompt = [
+  const basePrompt = [
     "You are an adaptive onboarding interviewer.",
     "Goal: ask the single best next interview question while updating focus-area reflections.",
     "Use all provided context. Every reply must include a brief reaction to the candidate answer and then one follow-up question.",
@@ -283,51 +359,31 @@ async function generateInterviewTurnWithGemini(input: {
     JSON.stringify(answerAssessment),
   ].join("\n");
 
-  const response = await fetch(
-    `${GEMINI_API_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: prompt }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.35,
-          maxOutputTokens: 1400,
-          responseMimeType: "application/json",
-        },
-      }),
-    },
-  );
-
-  const payload = (await response
-    .json()
-    .catch(() => null)) as GeminiGenerateResponse | null;
-
-  if (!response.ok) {
-    const detail = payload?.error?.message || `Gemini request failed with status ${response.status}.`;
-    throw new Error(detail);
+  let parsedJson: { reflections?: unknown; nextPrompt?: unknown } | null = null;
+  let parseError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const prompt =
+      attempt === 0
+        ? basePrompt
+        : `${basePrompt}\n\nImportant: Your previous output was invalid JSON. Return a single valid JSON object only.`;
+    const candidateText = await requestGeminiCandidateText({
+      model,
+      apiKey,
+      prompt,
+    });
+    try {
+      parsedJson = safeParseInterviewJson(candidateText);
+      parseError = null;
+      break;
+    } catch (error) {
+      parseError = error;
+    }
   }
-
-  const candidateText = payload?.candidates?.[0]?.content?.parts
-    ?.map((part) => part?.text ?? "")
-    .join("")
-    .trim();
-
-  if (!candidateText) {
-    throw new Error("Gemini returned an empty response.");
+  if (!parsedJson) {
+    throw parseError instanceof Error
+      ? parseError
+      : new Error("Gemini response JSON parsing failed.");
   }
-
-  const parsedJson = JSON.parse(extractJsonObject(candidateText)) as {
-    reflections?: unknown;
-    nextPrompt?: unknown;
-  };
 
   const reflectionBundle = interviewReflectionLayerSchema.parse({
     reflections: parsedJson.reflections ?? [],
@@ -389,7 +445,38 @@ async function persistInterviewProgress(params: {
         }),
         importance: 86,
       }),
+      saveAgentMemory({
+        profile_id: params.profileId,
+        category: "onboarding_interview",
+        key: "onboarding_conversation_latest",
+        content: params.messages
+          .slice(-40)
+          .map((message) => `[${message.role}] ${sanitizeText(message.content, 500)}`)
+          .join("\n"),
+        importance: 92,
+      }),
     ];
+
+    const accuracy = estimateSimulationAccuracy({
+      resumeText: params.resumeText ?? null,
+      lifeStory: params.lifeStory ?? null,
+      coverage,
+    });
+    writes.push(
+      saveAgentMemory({
+        profile_id: params.profileId,
+        category: "onboarding_interview",
+        key: "onboarding_focus_metrics_latest",
+        content: JSON.stringify({
+          updatedAt: new Date().toISOString(),
+          coverage,
+          simulationAccuracy: accuracy.simulationAccuracy,
+          averageCoverage: accuracy.averageCoverage,
+          nextQuestion: sanitizeText(params.nextQuestion, 220),
+        }),
+        importance: 93,
+      }),
+    );
 
     if (latestUserMessage?.content) {
       writes.push(
@@ -418,9 +505,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid interview payload." }, { status: 400 });
     }
 
+    const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization");
     const user = await getAuthUser(req);
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        {
+          error: "Unauthorized",
+          meta: {
+            hasAuthorizationHeader: Boolean(authHeader?.startsWith("Bearer ")),
+          },
+        },
+        { status: 401 },
+      );
     }
 
     const body = parsed.data;

@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
-import { ArrowRight } from "lucide-react";
+import Image from "next/image";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowRight, Music2, VolumeX, X } from "lucide-react";
 import { motion, stagger, useAnimate } from "motion/react";
 import Floating, { FloatingElement } from "@/components/ui/parallax-floating";
 
@@ -46,16 +47,88 @@ const imageBaseClasses =
 
 const Preview = () => {
   const [scope, animate] = useAnimate();
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [isMusicOn, setIsMusicOn] = useState(true);
+  const bgAudioRef = useRef<HTMLAudioElement | null>(null);
+  const openInfoModal = useCallback(() => setIsInfoOpen(true), []);
+  const closeInfoModal = useCallback(() => setIsInfoOpen(false), []);
 
   useEffect(() => {
     animate("img", { opacity: [0, 1] }, { duration: 0.55, delay: stagger(0.14) });
   }, [animate]);
+
+  useEffect(() => {
+    if (!isInfoOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsInfoOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isInfoOpen]);
+
+  useEffect(() => {
+    const audio = bgAudioRef.current;
+    if (!audio) return;
+
+    if (isMusicOn) {
+      audio.muted = false;
+      void audio.play().catch(() => {
+        // Browsers may block autoplay until user gesture.
+      });
+      return;
+    }
+
+    audio.pause();
+    audio.muted = true;
+  }, [isMusicOn]);
+
+  useEffect(() => {
+    if (!isMusicOn) return;
+
+    const resumeAudio = () => {
+      const audio = bgAudioRef.current;
+      if (!audio) return;
+      audio.muted = false;
+      void audio.play().catch(() => {
+        // Ignore if browser still blocks playback.
+      });
+    };
+
+    window.addEventListener("pointerdown", resumeAudio, { once: true });
+    return () => window.removeEventListener("pointerdown", resumeAudio);
+  }, [isMusicOn]);
+
+  const toggleMusic = useCallback(() => {
+    setIsMusicOn((current) => !current);
+  }, []);
 
   return (
     <section
       ref={scope}
       className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-black"
     >
+      <audio
+        ref={bgAudioRef}
+        src="/Hedwig's Theme - John Williams.mp3"
+        preload="auto"
+        loop
+      />
+      <button
+        type="button"
+        onClick={toggleMusic}
+        aria-pressed={isMusicOn}
+        aria-label={isMusicOn ? "Mute background music" : "Unmute background music"}
+        className="fixed right-4 top-4 z-30 inline-flex items-center gap-2 rounded-full border border-white/30 bg-black/45 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white transition hover:border-white/60 hover:bg-black/65 sm:right-6 sm:top-6"
+      >
+        <Music2 className="h-4 w-4" />
+        <span>Music</span>
+        {isMusicOn ? <span className="text-white/80">On</span> : <VolumeX className="h-4 w-4" />}
+      </button>
+
       <motion.div
         className="z-20 flex max-w-[680px] flex-col items-center space-y-4 px-6 text-center"
         initial={{ opacity: 0, y: 14 }}
@@ -151,6 +224,100 @@ const Preview = () => {
           />
         </FloatingElement>
       </Floating>
+
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-controls="landing-project-modal"
+        aria-expanded={isInfoOpen}
+        onClick={openInfoModal}
+        className="group fixed bottom-4 right-4 z-30 flex h-32 w-32 items-center justify-center rounded-full sm:bottom-6 sm:right-6 sm:h-40 sm:w-40"
+      >
+        <svg
+          viewBox="0 0 150 150"
+          aria-hidden
+          className="pointer-events-none absolute inset-0 h-full w-full animate-[spin_15s_linear_infinite] drop-shadow-[0_0_10px_rgba(238,186,48,0.45)]"
+        >
+          <defs>
+            <path
+              id="sprite-click-ring"
+              d="M 75,75 m -58,0 a 58,58 0 1,1 116,0 a 58,58 0 1,1 -116,0"
+            />
+          </defs>
+          <text
+            fill="#eeba30"
+            fontSize="13"
+            fontWeight="700"
+            letterSpacing="1.6"
+            style={{ textTransform: "uppercase" }}
+          >
+            <textPath href="#sprite-click-ring">
+              click me! • click me! • click me! •
+            </textPath>
+          </text>
+        </svg>
+
+        <Image
+          src="/interviewer/sprite_excited.png"
+          alt="Excited interviewer sprite"
+          width={112}
+          height={112}
+          priority
+          className="pointer-events-none relative z-10 h-24 w-24 transition-transform duration-200 group-hover:scale-105 sm:h-28 sm:w-28"
+        />
+        <span className="sr-only">Open information about the project and team</span>
+      </button>
+
+      {isInfoOpen ? (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/76 px-4 py-6 backdrop-blur-sm"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeInfoModal();
+            }
+          }}
+        >
+          <div
+            id="landing-project-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="landing-project-title"
+            className="landing-info-modal relative w-full max-w-2xl px-6 pb-7 pt-8 text-left sm:px-10 sm:pb-9 sm:pt-10"
+          >
+            <button
+              type="button"
+              onClick={closeInfoModal}
+              className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#d3a625]/60 bg-black/45 text-[#f7e9bf] transition-colors hover:border-[#eeba30] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#eeba30]"
+              aria-label="Close project and team details"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <h2
+              id="landing-project-title"
+              className="arcane-display-title text-3xl font-extrabold uppercase leading-tight tracking-[0.07em] text-[#f7e9bf] [text-shadow:0_1px_0_#6a4c12,0_0_18px_rgba(238,186,48,0.32)] sm:text-4xl"
+            >
+              About The Oracle Project & Team
+            </h2>
+
+            <div className="mt-6 grid gap-5 text-sm text-[#efe4c6]/90 sm:grid-cols-2 sm:gap-6 sm:text-base">
+              <section>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#eeba30]">
+                  The Project
+                </h3>
+                <p className="leading-relaxed">placerholder text here</p>
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#eeba30]">
+                  The Team
+                </h3>
+                <p className="leading-relaxed">placehodler text here</p>
+              </section>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 };

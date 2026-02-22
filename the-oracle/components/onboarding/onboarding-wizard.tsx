@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { AIInputWithLoading } from "@/components/ui/ai-input-with-loading";
 import { AIVoiceInput } from "@/components/ui/ai-voice-input";
+import { Loader } from "@/components/ui/loader";
 import {
   Sheet,
   SheetContent,
@@ -307,29 +308,50 @@ async function fetchJson<T>(
   const timeoutId = globalThis?.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const headers = new Headers(requestOptions.headers ?? undefined);
-    if (withAuth) {
-      try {
-        const supabase = getSupabase();
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (session?.access_token && !headers.has("Authorization")) {
-          headers.set("Authorization", `Bearer ${session.access_token}`);
-        }
-      } catch {}
+    const baseHeaders = new Headers(requestOptions.headers ?? undefined);
+    const supabase = withAuth ? getSupabase() : null;
+
+    async function maybeAttachToken(headers: Headers) {
+      if (!withAuth || headers.has("Authorization") || !supabase) return;
+      const first = await supabase.auth.getSession().catch(() => null);
+      let token = first?.data?.session?.access_token ?? null;
+      if (!token) {
+        await new Promise((resolve) => window.setTimeout(resolve, 180));
+        const second = await supabase.auth.getSession().catch(() => null);
+        token = second?.data?.session?.access_token ?? null;
+      }
+      if (!token) {
+        const refreshed = await supabase.auth.refreshSession().catch(() => null);
+        token = refreshed?.data?.session?.access_token ?? null;
+      }
+      if (token) headers.set("Authorization", `Bearer ${token}`);
     }
 
-    const response = await fetch(url, {
-      ...requestOptions,
-      headers,
-      signal: controller.signal,
-    });
+    async function executeRequest(headers: Headers) {
+      const response = await fetch(url, {
+        ...requestOptions,
+        headers,
+        signal: controller.signal,
+      });
+      const contentType = response.headers.get("content-type") ?? "";
+      const jsonPayload = contentType.includes("application/json")
+        ? await response.json().catch(() => null)
+        : null;
+      return { response, jsonPayload };
+    }
 
-    const contentType = response.headers.get("content-type") ?? "";
-    const jsonPayload = contentType.includes("application/json")
-      ? await response.json().catch(() => null)
-      : null;
+    await maybeAttachToken(baseHeaders);
+    let { response, jsonPayload } = await executeRequest(baseHeaders);
+
+    if (withAuth && response.status === 401 && supabase) {
+      const refreshed = await supabase.auth.refreshSession().catch(() => null);
+      const retryToken = refreshed?.data?.session?.access_token ?? null;
+      if (retryToken) {
+        const retryHeaders = new Headers(requestOptions.headers ?? undefined);
+        retryHeaders.set("Authorization", `Bearer ${retryToken}`);
+        ({ response, jsonPayload } = await executeRequest(retryHeaders));
+      }
+    }
 
     if (!response.ok) {
       const message =
@@ -339,7 +361,9 @@ async function fetchJson<T>(
           ? ((jsonPayload as { error?: string; message?: string }).error ??
             (jsonPayload as { error?: string; message?: string }).message ??
             `Request failed: ${response.status}`)
-          : `Request failed: ${response.status}`;
+          : response.status === 401
+            ? "Unauthorized. Please sign in again."
+            : `Request failed: ${response.status}`;
       throw new Error(message);
     }
 
@@ -358,6 +382,21 @@ async function fetchJson<T>(
     if (timeoutId) {
       globalThis?.clearTimeout(timeoutId);
     }
+  }
+}
+
+async function getAccessTokenOrNull() {
+  try {
+    const supabase = getSupabase();
+    const first = await supabase.auth.getSession();
+    let token = first.data.session?.access_token ?? null;
+    if (token) return token;
+
+    const refreshed = await supabase.auth.refreshSession();
+    token = refreshed.data.session?.access_token ?? null;
+    return token;
+  } catch {
+    return null;
   }
 }
 
@@ -469,6 +508,93 @@ function waitForAudioReady(audio: HTMLAudioElement, timeoutMs: number) {
       finish(resolve);
     }
   });
+}
+
+function getSpeechVoices(synth: SpeechSynthesis) {
+  const voices = synth.getVoices();
+  return Array.isArray(voices) ? voices : [];
+}
+
+function waitForSpeechVoices(synth: SpeechSynthesis, timeoutMs: number) {
+  return new Promise<SpeechSynthesisVoice[]>((resolve) => {
+    const existing = getSpeechVoices(synth);
+    if (existing.length > 0) {
+      resolve(existing);
+      return;
+    }
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      synth.removeEventListener("voiceschanged", onVoicesChanged);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      resolve(getSpeechVoices(synth));
+    };
+    const onVoicesChanged = () => finish();
+    const timeoutId = window.setTimeout(finish, timeoutMs);
+
+    synth.addEventListener("voiceschanged", onVoicesChanged);
+  });
+}
+
+function pickBestSpeechVoice(voices: SpeechSynthesisVoice[]) {
+  if (voices.length === 0) return null;
+  const scored = voices
+    .map((voice) => {
+      const normalizedName = voice.name.toLowerCase();
+      const normalizedLang = voice.lang.toLowerCase();
+      let score = 0;
+      if (voice.localService) score += 5;
+      if (voice.default) score += 6;
+      if (normalizedLang.startsWith("en-us")) score += 5;
+      if (normalizedLang.startsWith("en")) score += 3;
+      if (normalizedName.includes("neural")) score += 4;
+      if (normalizedName.includes("premium")) score += 3;
+      if (normalizedName.includes("natural")) score += 3;
+      if (normalizedName.includes("siri")) score += 3;
+      if (normalizedName.includes("google")) score += 2;
+      if (normalizedName.includes("microsoft")) score += 2;
+      if (normalizedName.includes("enhanced")) score += 2;
+      if (normalizedName.includes("compact")) score -= 1;
+      return { voice, score };
+    })
+    .sort((a, b) => b.score - a.score);
+  return scored[0]?.voice ?? null;
+}
+
+function splitSpeechText(text: string, chunkLength = 220) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return [];
+  const sentences =
+    normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((segment) => segment.trim()) ?? [normalized];
+  const chunks: string[] = [];
+  let current = "";
+  for (const sentence of sentences) {
+    if (!sentence) continue;
+    if (sentence.length > chunkLength) {
+      if (current) {
+        chunks.push(current.trim());
+        current = "";
+      }
+      for (let index = 0; index < sentence.length; index += chunkLength) {
+        chunks.push(sentence.slice(index, index + chunkLength).trim());
+      }
+      continue;
+    }
+    if (!current) {
+      current = sentence;
+      continue;
+    }
+    if ((current + " " + sentence).length <= chunkLength) {
+      current = `${current} ${sentence}`.trim();
+    } else {
+      chunks.push(current.trim());
+      current = sentence;
+    }
+  }
+  if (current) chunks.push(current.trim());
+  return chunks.filter(Boolean);
 }
 
 function isInterviewMessageDomainId(
@@ -763,13 +889,21 @@ export function OnboardingWizard() {
   const [interviewerSpriteIndex, setInterviewerSpriteIndex] = useState(0);
   const [autoVoiceEnabled, setAutoVoiceEnabled] = useState(true);
   const [audioPlaying, setAudioPlaying] = useState(false);
+  const [summonZapActive, setSummonZapActive] = useState(false);
+  const [zapBeamStyle, setZapBeamStyle] = useState<CSSProperties | null>(null);
+  const storyStageRef = useRef<HTMLDivElement | null>(null);
+  const wandAnchorRef = useRef<HTMLSpanElement | null>(null);
+  const latestAssistantBubbleRef = useRef<HTMLParagraphElement | null>(null);
   const storyScrollRef = useRef<HTMLDivElement | null>(null);
   const interviewRequestAbortRef = useRef<AbortController | null>(null);
   const interviewRequestIdRef = useRef(0);
   const interviewSpeechRequestIdRef = useRef(0);
   const interviewAudioRef = useRef<HTMLAudioElement | null>(null);
   const interviewAudioObjectUrlRef = useRef<string | null>(null);
+  const interviewSpeechSynthesisRef = useRef<SpeechSynthesis | null>(null);
   const lastSpokenAssistantIdRef = useRef<string | null>(null);
+  const bootstrapAttemptedRef = useRef(false);
+  const summonZapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const steps = useMemo(() => {
     if (onboardingPath === "minimal") {
@@ -918,6 +1052,15 @@ export function OnboardingWizard() {
       URL.revokeObjectURL(objectUrl);
       interviewAudioObjectUrlRef.current = null;
     }
+    const synth =
+      interviewSpeechSynthesisRef.current ??
+      (typeof window !== "undefined" && "speechSynthesis" in window
+        ? window.speechSynthesis
+        : null);
+    if (synth) {
+      synth.cancel();
+      interviewSpeechSynthesisRef.current = synth;
+    }
     setAudioPlaying(false);
   }, []);
 
@@ -943,6 +1086,60 @@ export function OnboardingWizard() {
       const requestId = interviewSpeechRequestIdRef.current + 1;
       interviewSpeechRequestIdRef.current = requestId;
       stopInterviewerSpeech();
+      setVoiceError(null);
+
+      const speakWithBrowserVoice = async () => {
+        if (
+          typeof window === "undefined" ||
+          !("speechSynthesis" in window) ||
+          typeof SpeechSynthesisUtterance === "undefined"
+        ) {
+          return false;
+        }
+        const synth = window.speechSynthesis;
+        interviewSpeechSynthesisRef.current = synth;
+        const voices = await waitForSpeechVoices(synth, 450);
+        const bestVoice = pickBestSpeechVoice(voices);
+        const chunks = splitSpeechText(message);
+        if (chunks.length === 0) return false;
+
+        synth.cancel();
+        setAudioPlaying(true);
+
+        return await new Promise<boolean>((resolve) => {
+          let index = 0;
+          const finish = (result: boolean) => {
+            if (interviewSpeechRequestIdRef.current === requestId) {
+              setAudioPlaying(false);
+            }
+            resolve(result);
+          };
+          const speakNext = () => {
+            if (interviewSpeechRequestIdRef.current !== requestId) {
+              synth.cancel();
+              finish(false);
+              return;
+            }
+            if (index >= chunks.length) {
+              finish(true);
+              return;
+            }
+            const utterance = new SpeechSynthesisUtterance(chunks[index]);
+            if (bestVoice) utterance.voice = bestVoice;
+            utterance.lang = bestVoice?.lang || "en-US";
+            utterance.rate = 0.97;
+            utterance.pitch = 1.02;
+            utterance.volume = 1;
+            utterance.onend = () => {
+              index += 1;
+              speakNext();
+            };
+            utterance.onerror = () => finish(false);
+            synth.speak(utterance);
+          };
+          speakNext();
+        });
+      };
 
       try {
         const response = await fetch("/api/intake/voice", {
@@ -956,8 +1153,8 @@ export function OnboardingWizard() {
         });
 
         if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as InterviewVoiceResponse | null;
-          throw new Error(payload?.error ?? "Could not synthesize interviewer voice.");
+          await speakWithBrowserVoice();
+          return;
         }
         if (interviewSpeechRequestIdRef.current !== requestId) return;
 
@@ -996,37 +1193,71 @@ export function OnboardingWizard() {
           stopInterviewerSpeech();
           return;
         }
-        setVoiceError(err?.message ?? "Interviewer voice is unavailable right now.");
-        stopInterviewerSpeech();
+        const fallbackUsed = await speakWithBrowserVoice();
+        if (!fallbackUsed) {
+          stopInterviewerSpeech();
+        }
       }
     },
     [autoVoiceEnabled, stopInterviewerSpeech],
   );
 
   useEffect(() => {
+    const supabase = getSupabase();
+    let cancelled = false;
+
+    async function verifySession() {
+      const first = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (first.data.session) return;
+
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+      const second = await supabase.auth.getSession();
+      if (!cancelled && !second.data.session) {
+        router.replace(`/login?next=${encodeURIComponent("/onboarding")}`);
+      }
+    }
+
+    void verifySession();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event: unknown, session: unknown) => {
+      const authEvent = typeof event === "string" ? event : "";
+      if (authEvent === "SIGNED_OUT" || (authEvent === "INITIAL_SESSION" && !session)) {
+        router.replace(`/login?next=${encodeURIComponent("/onboarding")}`);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (bootstrapAttemptedRef.current) return;
+    bootstrapAttemptedRef.current = true;
+
     let cancelled = false;
     async function bootstrap() {
       try {
+        const supabase = getSupabase();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.access_token || cancelled) return;
+
         await fetchJson<{ success: boolean }>("/api/user/bootstrap", {
           method: "POST",
           timeoutMs: 8_000,
         });
-      } catch (error: any) {
-        if (cancelled) return;
-        const message = String(error?.message ?? "");
-        if (
-          message.includes("401") ||
-          message.toLowerCase().includes("unauthorized")
-        ) {
-          router.replace(`/login?next=${encodeURIComponent("/onboarding")}`);
-        }
-      }
+      } catch {}
     }
     void bootstrap();
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     if (stepId !== "story") return;
@@ -1068,9 +1299,61 @@ export function OnboardingWizard() {
     if (lastSpokenAssistantIdRef.current !== null) {
       cycleInterviewerSprite();
     }
+
+    const stageEl = storyStageRef.current;
+    const wandEl = wandAnchorRef.current;
+    const targetEl = latestAssistantBubbleRef.current;
+    if (stageEl && wandEl && targetEl) {
+      const stageRect = stageEl.getBoundingClientRect();
+      const wandRect = wandEl.getBoundingClientRect();
+      const targetRect = targetEl.getBoundingClientRect();
+      const startX = wandRect.left + wandRect.width / 2 - stageRect.left;
+      const startY = wandRect.top + wandRect.height / 2 - stageRect.top;
+      const endX = targetRect.left + Math.min(26, targetRect.width * 0.18) - stageRect.left;
+      const endY = targetRect.top + 20 - stageRect.top;
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const length = Math.hypot(dx, dy);
+      const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+      setZapBeamStyle({
+        left: `${Math.round(startX)}px`,
+        top: `${Math.round(startY)}px`,
+        width: `${Math.max(36, Math.round(length))}px`,
+        transform: `rotate(${angle}deg)`,
+      });
+    } else {
+      setZapBeamStyle(null);
+    }
+
+    if (summonZapTimeoutRef.current) {
+      clearTimeout(summonZapTimeoutRef.current);
+      summonZapTimeoutRef.current = null;
+    }
+    setSummonZapActive(true);
+    summonZapTimeoutRef.current = setTimeout(() => {
+      setSummonZapActive(false);
+      summonZapTimeoutRef.current = null;
+    }, 1500);
+
     lastSpokenAssistantIdRef.current = latestAssistantMessage.id;
     void speakInterviewerText(latestAssistantMessage.content);
-  }, [cycleInterviewerSprite, interviewStarted, latestAssistantMessage, speakInterviewerText, stepId]);
+  }, [
+    cycleInterviewerSprite,
+    interviewStarted,
+    latestAssistantMessage,
+    speakInterviewerText,
+    stepId,
+  ]);
+
+  useEffect(
+    () => () => {
+      if (summonZapTimeoutRef.current) {
+        clearTimeout(summonZapTimeoutRef.current);
+        summonZapTimeoutRef.current = null;
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     setStepIndex((index) => Math.min(index, Math.max(steps.length - 1, 0)));
@@ -1112,6 +1395,13 @@ export function OnboardingWizard() {
   const requestInterviewTurn = useCallback(async (
     messages: OnboardingInterviewMessage[],
   ) => {
+    const token = await getAccessTokenOrNull();
+    if (!token) {
+      setError("Your session expired. Please sign in again.");
+      router.replace(`/login?next=${encodeURIComponent("/onboarding")}`);
+      return;
+    }
+
     const requestId = interviewRequestIdRef.current + 1;
     interviewRequestIdRef.current = requestId;
     interviewRequestAbortRef.current?.abort();
@@ -1127,6 +1417,7 @@ export function OnboardingWizard() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           resumeText: onboardingResumeText || null,
@@ -1153,6 +1444,7 @@ export function OnboardingWizard() {
     interviewReflections,
     lifeStory,
     onboardingResumeText,
+    router,
     simIntents,
   ]);
 
@@ -1470,7 +1762,9 @@ export function OnboardingWizard() {
 
   return (
     <div
-      className={`mystic-bg min-h-screen text-zinc-100 ${stepId === "story" ? "h-screen overflow-hidden" : ""}`}
+      className={`mystic-bg min-h-[100svh] text-zinc-100 ${
+        stepId === "story" ? "h-[100svh] overflow-hidden" : ""
+      }`}
       style={ONBOARDING_OUTLINE_VARS}
     >
       <div className="relative z-10 w-full px-2 pt-2 sm:px-3 sm:pt-3">
@@ -1484,7 +1778,11 @@ export function OnboardingWizard() {
       <div
         className={`relative z-10 mx-auto flex w-full flex-col px-4 pt-4 sm:px-6 ${
           onboardingContentMaxWidthClass
-        } ${stepId === "story" ? "h-[calc(100vh-7rem)] overflow-hidden pb-4" : "min-h-[calc(100vh-7rem)] pb-6"}`}
+        } ${
+          stepId === "story"
+            ? "h-[calc(100svh-7rem)] overflow-hidden pb-4"
+            : "min-h-[calc(100svh-7rem)] pb-6"
+        }`}
       >
         <header className={`text-center ${stepId === "story" ? "shrink-0" : ""}`}>
           <h1 className="arcane-display-title text-3xl leading-tight text-zinc-50 sm:text-4xl">
@@ -1676,6 +1974,7 @@ export function OnboardingWizard() {
                       height={66}
                       aria-hidden
                       className="pointer-events-none absolute bottom-2 right-3 opacity-80"
+                      style={{ width: "auto", height: "auto" }}
                     />
                   </button>
 
@@ -1719,6 +2018,7 @@ export function OnboardingWizard() {
                       height={84}
                       aria-hidden
                       className="pointer-events-none absolute bottom-2 right-4 opacity-85"
+                      style={{ width: "auto", height: "auto" }}
                     />
                   </button>
                 </div>
@@ -1869,17 +2169,20 @@ export function OnboardingWizard() {
                   >
                     Replay
                   </Button>
-                  <Button
-                    type="button"
-                    onClick={goToSimulationStep}
-                    disabled={saving}
-                    className="arcane-button-primary h-9 rounded-md px-4"
-                  >
-                    Continue to simulations
-                  </Button>
                 </div>
 
-                <div className="grid min-h-0 flex-1 items-start gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                <div
+                  ref={storyStageRef}
+                  className="relative grid min-h-0 flex-1 items-start gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]"
+                >
+                  {summonZapActive && zapBeamStyle ? (
+                    <div
+                      aria-hidden
+                      className="interview-zap-beam hidden lg:block"
+                      style={zapBeamStyle}
+                    />
+                  ) : null}
+
                   <div className="relative hidden min-h-0 items-center justify-center px-4 pb-2 pt-4 lg:flex">
                     <Image
                       src={currentInterviewerSprite}
@@ -1887,29 +2190,33 @@ export function OnboardingWizard() {
                       width={960}
                       height={1200}
                       priority={stepId === "story"}
-                      className={`h-auto max-h-[min(76vh,760px)] w-auto max-w-full object-contain object-top drop-shadow-[0_30px_40px_rgba(0,0,0,0.45)] transition-transform duration-500 ${
+                      className={`h-auto max-h-[min(76svh,760px)] w-auto max-w-full object-contain object-top drop-shadow-[0_30px_40px_rgba(0,0,0,0.45)] transition-transform duration-500 ${
                         audioPlaying ? "scale-[1.01]" : "scale-100"
                       }`}
                       sizes="(max-width: 1024px) 94vw, 62vw"
                     />
+                    {summonZapActive ? (
+                      <div aria-hidden className="interviewer-wand-flash">
+                        <span className="interviewer-wand-spark" />
+                      </div>
+                    ) : null}
+                    <span aria-hidden ref={wandAnchorRef} className="interviewer-wand-anchor" />
                   </div>
 
-                  <div className="flex h-full min-h-0 flex-col rounded-[24px] bg-zinc-900/55 p-3 sm:p-4">
+                  <div className="flex h-full min-h-0 flex-col gap-3">
+                    <div className="rounded-xl border border-cyan-200/40 bg-zinc-900/85 px-4 py-3 text-sm leading-relaxed text-cyan-100 shadow-[0_12px_24px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+                      You can end the interview anytime when you think you answered enough
+                      questions so you can start the actual simulation!
+                    </div>
+                    <div className="flex h-full min-h-0 flex-col rounded-[24px] bg-zinc-900/55 p-3 sm:p-4">
                     <div className="shrink-0 flex items-center justify-between gap-3 pb-3">
-                        <div>
-                          <p className="text-sm font-semibold text-zinc-100">Interview</p>
-                          <p className="text-xs text-zinc-400">
-                            Type or use the mic. Scroll to review full conversation.
-                          </p>
-                        </div>
-                        <div className="rounded-full border border-white/15 bg-zinc-950/70 px-3 py-1 text-[11px] text-zinc-300">
-                          {!interviewStarted
-                            ? "Not started"
-                            : activeVoiceTarget === "story"
-                            ? "Recording"
-                            : "Idle"}
-                        </div>
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-100">Interview</p>
+                        <p className="text-xs text-zinc-400">
+                          Type or use the mic. Scroll to review full conversation.
+                        </p>
                       </div>
+                    </div>
 
                       {interviewStarted ? (
                         <div
@@ -1919,9 +2226,33 @@ export function OnboardingWizard() {
                           <div className="space-y-3 pb-2">
                             {interviewMessages.map((message) => {
                               const isAssistant = message.role === "assistant";
+                              const isLatestAssistant =
+                                isAssistant && message.id === latestAssistantMessage?.id;
                               return isAssistant ? (
-                                <div key={message.id} className="flex justify-start pr-8 sm:pr-14">
-                                  <p className={storyBubbleAssistantClass}>{message.content}</p>
+                                <div
+                                  key={message.id}
+                                  className="flex justify-start gap-1.5 pr-8 sm:pr-14"
+                                >
+                                  <div className="mb-0.5 shrink-0 self-end rounded-full border border-cyan-300/40 bg-zinc-800 p-0.5 sm:hidden">
+                                    <Image
+                                      src={currentInterviewerSprite}
+                                      alt=""
+                                      width={26}
+                                      height={26}
+                                      aria-hidden
+                                      className="h-[26px] w-[26px] rounded-full object-cover object-top"
+                                    />
+                                  </div>
+                                  <p
+                                    ref={isLatestAssistant ? latestAssistantBubbleRef : null}
+                                    className={`${storyBubbleAssistantClass} ${
+                                      summonZapActive && isLatestAssistant
+                                        ? "interview-summoned-question"
+                                        : ""
+                                    }`}
+                                  >
+                                    {message.content}
+                                  </p>
                                 </div>
                               ) : (
                                 <div
@@ -1936,9 +2267,12 @@ export function OnboardingWizard() {
                               );
                             })}
                             {interviewLoading ? (
-                              <div className="inline-flex items-center rounded-full border border-white/15 bg-zinc-900 px-3 py-1 text-xs text-zinc-400">
-                                Thinking...
-                              </div>
+                              <Loader
+                                variant="loading-dots"
+                                size="sm"
+                                text="Thinking"
+                                className="text-xs text-zinc-400"
+                              />
                             ) : null}
                           </div>
                         </div>
@@ -1996,6 +2330,7 @@ export function OnboardingWizard() {
                         showStatusText={false}
                         className="w-full max-w-none shrink-0 py-0"
                       />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2003,7 +2338,7 @@ export function OnboardingWizard() {
 
             {stepId === "simulation" ? (
               <div className="mx-auto w-full max-w-6xl">
-                <div className="rounded-[28px] bg-zinc-950/95 p-5 shadow-[0_28px_80px_rgba(0,0,0,0.55),inset_0_0_0_1px_rgba(255,255,255,0.08)] sm:p-7">
+                <div className="arcane-panel arcane-panel-outline-fat rounded-[28px] p-5 shadow-[0_28px_80px_rgba(0,0,0,0.55),inset_0_0_0_1px_rgba(255,255,255,0.08)] sm:p-7">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h2 className="arcane-display-title text-2xl font-semibold text-zinc-50">
@@ -2018,7 +2353,7 @@ export function OnboardingWizard() {
                   </div>
 
                   <div className="mt-6 grid gap-4 lg:grid-cols-[1.15fr_1fr]">
-                    <div className="arcane-panel arcane-panel-outline-thin rounded-2xl p-4">
+                    <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                       <p className="text-sm font-medium text-zinc-100">Choose horizon</p>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2">
                         {SIMULATION_HORIZON_OPTIONS.map((option) => (
@@ -2047,7 +2382,7 @@ export function OnboardingWizard() {
                       </div>
                     </div>
 
-                    <div className="arcane-panel arcane-panel-outline-thin rounded-2xl p-4">
+                    <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                       <p className="text-sm font-medium text-zinc-100">Simulation mode</p>
                       <div className="mt-3 grid gap-2">
                         {SIMULATION_INTENT_OPTIONS.map((option) => (
@@ -2077,7 +2412,7 @@ export function OnboardingWizard() {
                     </div>
                   </div>
 
-                  <div className="arcane-panel arcane-panel-outline-fat mt-4 rounded-2xl p-4">
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                     <p className="text-sm font-medium text-zinc-100">Target outcome (optional)</p>
                     <Textarea
                       value={targetOutcome}
@@ -2160,7 +2495,18 @@ export function OnboardingWizard() {
                   disabled={!hasResumeSignal || saving}
                   className="arcane-button-primary h-10 rounded-md px-6 text-sm font-medium normal-case tracking-normal disabled:opacity-40"
                 >
-                  Continue to simulation
+                  Start simulation
+                </Button>
+              ) : null}
+
+              {stepId === "story" ? (
+                <Button
+                  type="button"
+                  onClick={goToSimulationStep}
+                  disabled={saving}
+                  className="arcane-button-primary h-10 rounded-md px-6 text-sm font-medium normal-case tracking-normal disabled:opacity-40"
+                >
+                  Start simulation
                 </Button>
               ) : null}
             </div>

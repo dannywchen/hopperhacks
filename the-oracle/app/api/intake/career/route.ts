@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { horizonPresetToYears } from "@/lib/onboarding/config";
+import { estimateSimulationAccuracy, reflectionCoverageMap } from "@/lib/onboarding/interview";
 import { getAuthUser } from "@/lib/auth";
 import { ensureUserBootstrap, saveAgentMemory, saveUserSetup } from "@/lib/game-db";
 import type {
+  OnboardingInterviewDomainId,
   OnboardingSnapshot,
   SimulationIntent,
   UserFactor,
@@ -423,6 +425,12 @@ export async function POST(req: Request) {
     await saveUserSetup(user.id, setup);
 
     if (snapshot) {
+      const coverageMap = reflectionCoverageMap(snapshot.reflections);
+      const accuracy = estimateSimulationAccuracy({
+        resumeText: snapshot.resumeText ?? null,
+        lifeStory: snapshot.lifeStory ?? null,
+        coverage: coverageMap as Record<OnboardingInterviewDomainId, number>,
+      });
       const writes = [
         saveAgentMemory({
           profile_id: user.id,
@@ -438,6 +446,18 @@ export async function POST(req: Request) {
             reflections: snapshot.reflections.slice(0, 8),
           }),
           importance: 95,
+        }),
+        saveAgentMemory({
+          profile_id: user.id,
+          category: "onboarding_interview",
+          key: "onboarding_focus_metrics_latest",
+          content: JSON.stringify({
+            updatedAt: now,
+            coverage: coverageMap,
+            simulationAccuracy: accuracy.simulationAccuracy,
+            averageCoverage: accuracy.averageCoverage,
+          }),
+          importance: 93,
         }),
       ];
 

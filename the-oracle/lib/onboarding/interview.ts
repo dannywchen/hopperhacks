@@ -82,6 +82,10 @@ export type MockInterviewResponse = {
   };
 };
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function normalizeMessage(
   message: NonNullable<InterviewRequestPayload["messages"]>[number],
 ): OnboardingInterviewMessage {
@@ -97,6 +101,32 @@ function normalizeMessage(
 function clampCoverage(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+export function estimateSimulationAccuracy(params: {
+  resumeText?: string | null;
+  lifeStory?: string | null;
+  coverage: Record<OnboardingInterviewDomainId, number>;
+}) {
+  const resumeSignal = String(params.resumeText ?? "").trim().length > 120;
+  const storyChars = String(params.lifeStory ?? "").trim().length;
+  const values = INTERVIEW_DOMAINS.map((domain) => {
+    return clampCoverage(params.coverage[domain.id] ?? 0);
+  });
+  const averageCoverage =
+    values.length > 0
+      ? values.reduce((sum, value) => sum + value, 0) / values.length
+      : 0;
+
+  const resumeScore = resumeSignal ? 26 : 10;
+  const storyScore = clamp(Math.round(storyChars / 85), 0, 24);
+  const interviewScore = clamp(Math.round(averageCoverage * 0.5), 0, 50);
+  const simulationAccuracy = clamp(resumeScore + storyScore + interviewScore, 10, 100);
+
+  return {
+    simulationAccuracy,
+    averageCoverage: Math.round(averageCoverage),
+  };
 }
 
 function domainKeywordCount(

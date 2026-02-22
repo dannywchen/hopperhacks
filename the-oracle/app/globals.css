@@ -344,6 +344,244 @@
   filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.5));
 }
 
+.interview-zap-beam {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 4px;
+  pointer-events: none;
+  z-index: 8;
+  transform-origin: left center;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(130, 208, 255, 0) 0%,
+      rgba(130, 208, 255, 0.85) 16%,
+      rgba(180, 236, 255, 0.98) 54%,
+      rgba(130, 208, 255, 0) 100%
+    );
+  filter: drop-shadow(0 0 9px rgba(124, 212, 255, 0.9));
+  animation: interview-zap-beam 1200ms ease-out forwards;
+}
+
+.interviewer-wand-flash {
+  position: absolute;
+  left: calc(31% - 24px);
+  top: calc(65% - 24px);
+  width: 56px;
+  height: 56px;
+  pointer-events: none;
+  z-index: 9;
+}
+
+.interviewer-wand-anchor {
+  position: absolute;
+  left: 31%;
+  top: 65%;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.interviewer-wand-spark {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, rgba(190, 241, 255, 0.95) 0%, rgba(116, 209, 255, 0.4) 42%, rgba(116, 209, 255, 0) 76%),
+    conic-gradient(
+      from 0deg,
+      rgba(190, 241, 255, 0.92) 0deg 14deg,
+      transparent 14deg 40deg,
+      rgba(190, 241, 255, 0.88) 40deg 58deg,
+      transparent 58deg 100deg,
+      rgba(190, 241, 255, 0.84) 100deg 124deg,
+      transparent 124deg 360deg
+    );
+  animation: interviewer-wand-flash 1200ms ease-out forwards;
+}
+
+.interview-summoned-question {
+  animation: interview-summoned-question 1200ms ease-out;
+}
+
+@keyframes typing {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
+}
+
+@keyframes loading-dots {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes wave {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.6);
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes text-blink {
+  0%,
+  100% {
+    color: var(--primary);
+  }
+  50% {
+    color: var(--muted-foreground);
+  }
+}
+
+@keyframes bounce-dots {
+  0%,
+  100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+@keyframes thin-pulse {
+  0%,
+  100% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.4;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer-text {
+  0% {
+    background-position: 150% center;
+  }
+  100% {
+    background-position: -150% center;
+  }
+}
+
+@keyframes wave-bars {
+  0%,
+  100% {
+    transform: scaleY(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scaleY(0.6);
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 50%;
+  }
+  100% {
+    background-position: -200% 50%;
+  }
+}
+
+@keyframes spinner-fade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes interview-zap-beam {
+  0% {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+  }
+  18% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    opacity: 0;
+    clip-path: inset(0 0 0 100%);
+  }
+}
+
+@keyframes interviewer-wand-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.45) rotate(0deg);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(1) rotate(16deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.22) rotate(40deg);
+  }
+}
+
+@keyframes interview-summoned-question {
+  0% {
+    box-shadow: 0 0 0 rgba(126, 216, 255, 0);
+    transform: translateX(-4px);
+    filter: brightness(1.06);
+  }
+  35% {
+    box-shadow:
+      0 0 0 1px rgba(150, 224, 255, 0.45),
+      0 0 18px rgba(94, 194, 255, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(126, 216, 255, 0);
+    transform: translateX(0);
+    filter: brightness(1);
+  }
+}
+
 @media (max-width: 1024px) {
   .wizard-guide-hill {
     width: clamp(185px, 28vw, 250px);
@@ -648,4 +886,45 @@
   border-color: color-mix(in srgb, var(--hp-ravenclaw-bronze) 62%, #000 38%);
   color: #fff;
   background: #1b1611;
+}
+
+.landing-info-modal {
+  position: relative;
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--hp-ravenclaw-bronze) 54%, #000 46%);
+  background:
+    linear-gradient(180deg, rgba(19, 15, 12, 0.98), rgba(10, 8, 6, 0.98)),
+    radial-gradient(circle at 20% 0%, rgba(195, 154, 28, 0.16), transparent 45%);
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  isolation: isolate;
+}
+
+.landing-info-modal::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0.9;
+  background:
+    url("/decors/frames/top-rail_regular.png") center -3px / calc(100% - 42px) 18px no-repeat,
+    url("/decors/frames/bottom-rail_regular.png") center calc(100% + 4px) / calc(100% - 42px) 20px
+      no-repeat,
+    url("/decors/frames/left-rail_regular.png") left center / 19px calc(100% - 34px) no-repeat,
+    url("/decors/frames/right-rail_regular.png") right center / 19px calc(100% - 34px) no-repeat;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.42));
+}
+
+@media (max-width: 640px) {
+  .landing-info-modal::before {
+    inset: -9px;
+    background:
+      url("/decors/frames/top-rail_regular.png") center -2px / calc(100% - 30px) 14px no-repeat,
+      url("/decors/frames/bottom-rail_regular.png") center calc(100% + 3px) / calc(100% - 30px) 16px
+        no-repeat,
+      url("/decors/frames/left-rail_regular.png") left center / 14px calc(100% - 24px) no-repeat,
+      url("/decors/frames/right-rail_regular.png") right center / 14px calc(100% - 24px) no-repeat;
+  }
 }
