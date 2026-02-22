@@ -100,7 +100,7 @@ export async function applyStatDeltas(profileId, deltas, event) {
     net_worth:           deltas.net_worth           !== undefined ? current.net_worth + deltas.net_worth        : current.net_worth,
     salary:              deltas.salary              !== undefined ? current.salary    + deltas.salary           : current.salary,
     age:                 deltas.age                 !== undefined ? current.age       + deltas.age              : current.age,
-    expected_death_age:  deltas.expected_death_age  !== undefined ? current.expected_death_age + deltas.expected_death_age : current.expected_death_age,
+    expected_death_age:  deltas.expected_death_age  !== undefined ? deltas.expected_death_age : current.expected_death_age,
     city:                deltas.city                !== undefined ? deltas.city                                 : current.city,
     relationship_status: deltas.relationship_status !== undefined ? deltas.relationship_status                  : current.relationship_status,
   }
