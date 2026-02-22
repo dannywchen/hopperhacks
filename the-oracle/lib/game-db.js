@@ -150,6 +150,34 @@ export async function saveAgentMemory(memory) {
   if (error) throw error
 }
 
+export async function updateAgentMemory(profileId, key, updates = {}) {
+  const supabaseAdmin = getSupabaseAdmin()
+  const { data, error } = await supabaseAdmin
+    .from('agent_memory')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('profile_id', profileId)
+    .eq('key', key)
+    .select('*')
+    .maybeSingle()
+
+  if (error) throw error
+  return data ?? null
+}
+
+export async function deleteAgentMemory(profileId, key) {
+  const supabaseAdmin = getSupabaseAdmin()
+  const { error } = await supabaseAdmin
+    .from('agent_memory')
+    .delete()
+    .eq('profile_id', profileId)
+    .eq('key', key)
+
+  if (error) throw error
+}
+
 // ─────────────────────────────────────────────
 // LIFE EVENTS
 // ─────────────────────────────────────────────

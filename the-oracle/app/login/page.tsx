@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ClassicLoader from "@/components/ui/loader";
 import { getSupabase } from "@/lib/supabase";
 
 const supabase = getSupabase();
@@ -151,9 +152,15 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading || checkingSession}
-            className="w-full rounded-full bg-white px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-black transition hover:scale-105 disabled:opacity-50"
+            className={`flex w-full items-center justify-center rounded-full px-5 py-3 text-xs font-semibold uppercase tracking-[0.18em] transition hover:scale-105 disabled:opacity-50 ${
+              loading || checkingSession ? "bg-black text-white" : "bg-white text-black"
+            }`}
           >
-            {loading || checkingSession ? "..." : isSignUp ? "Create Account" : "Enter the Oracle"}
+            {loading || checkingSession ? (
+              <ClassicLoader size="sm" />
+            ) : (
+              isSignUp ? "Create Account" : "Enter the Oracle"
+            )}
           </button>
         </form>
 

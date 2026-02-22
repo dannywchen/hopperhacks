@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
@@ -18,6 +19,7 @@ import { loadSetup } from "@/lib/client/setup-store";
 import { PixelAvatar } from "@/components/shared/pixel-avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import ClassicLoader from "@/components/ui/loader";
 import { Textarea } from "@/components/ui/textarea";
 import styles from "./dashboard.module.css";
 import type {
@@ -56,67 +58,69 @@ type EndSimulationResponse = SimulationDetailResponse & {
   };
 };
 
+const ONBOARDING_DASHBOARD_TRANSITION_KEY = "deep-sim.onboarding-dashboard-transition.v1";
+
 const metricCards: Array<{
   key: keyof SimulationMetrics;
   label: string;
   format: (value: number) => string;
   detail: string;
 }> = [
-  {
-    key: "money",
-    label: "Money",
-    format: (value) => `${Math.round(value)}/100`,
-    detail: "Represents financial flexibility and day-to-day confidence with money decisions.",
-  },
-  {
-    key: "netWorth",
-    label: "Net Worth",
-    format: (value) => `$${Math.round(value).toLocaleString()}`,
-    detail: "Long-horizon wealth accumulation estimate across all timeline actions.",
-  },
-  {
-    key: "salary",
-    label: "Salary",
-    format: (value) => `$${Math.round(value).toLocaleString()}`,
-    detail: "Estimated yearly compensation trajectory based on your path so far.",
-  },
-  {
-    key: "career",
-    label: "Career",
-    format: (value) => `${Math.round(value)}/100`,
-    detail: "Tracks career momentum, opportunities, and directional confidence.",
-  },
-  {
-    key: "health",
-    label: "Health",
-    format: (value) => `${Math.round(value)}/100`,
-    detail: "Composite health marker combining energy, rhythm, and resilience.",
-  },
-  {
-    key: "relationships",
-    label: "Relationships",
-    format: (value) => `${Math.round(value)}/100`,
-    detail: "Measures relationship quality, support depth, and social consistency.",
-  },
-  {
-    key: "fulfillment",
-    label: "Fulfillment",
-    format: (value) => `${Math.round(value)}/100`,
-    detail: "How aligned your daily decisions are with meaning and personal priorities.",
-  },
-  {
-    key: "stress",
-    label: "Stress",
-    format: (value) => `${Math.round(value)}/100`,
-    detail: "Higher values indicate sustained pressure and lower buffer capacity.",
-  },
-  {
-    key: "freeTime",
-    label: "Free Time",
-    format: (value) => `${Math.round(value)}/100`,
-    detail: "Available breathing room for recovery, relationships, and exploration.",
-  },
-];
+    {
+      key: "money",
+      label: "Money",
+      format: (value) => `${Math.round(value)}/100`,
+      detail: "Represents financial flexibility and day-to-day confidence with money decisions.",
+    },
+    {
+      key: "netWorth",
+      label: "Net Worth",
+      format: (value) => `$${Math.round(value).toLocaleString()}`,
+      detail: "Long-horizon wealth accumulation estimate across all timeline actions.",
+    },
+    {
+      key: "salary",
+      label: "Salary",
+      format: (value) => `$${Math.round(value).toLocaleString()}`,
+      detail: "Estimated yearly compensation trajectory based on your path so far.",
+    },
+    {
+      key: "career",
+      label: "Career",
+      format: (value) => `${Math.round(value)}/100`,
+      detail: "Tracks career momentum, opportunities, and directional confidence.",
+    },
+    {
+      key: "health",
+      label: "Health",
+      format: (value) => `${Math.round(value)}/100`,
+      detail: "Composite health marker combining energy, rhythm, and resilience.",
+    },
+    {
+      key: "relationships",
+      label: "Relationships",
+      format: (value) => `${Math.round(value)}/100`,
+      detail: "Measures relationship quality, support depth, and social consistency.",
+    },
+    {
+      key: "fulfillment",
+      label: "Fulfillment",
+      format: (value) => `${Math.round(value)}/100`,
+      detail: "How aligned your daily decisions are with meaning and personal priorities.",
+    },
+    {
+      key: "stress",
+      label: "Stress",
+      format: (value) => `${Math.round(value)}/100`,
+      detail: "Higher values indicate sustained pressure and lower buffer capacity.",
+    },
+    {
+      key: "freeTime",
+      label: "Free Time",
+      format: (value) => `${Math.round(value)}/100`,
+      detail: "Available breathing room for recovery, relationships, and exploration.",
+    },
+  ];
 
 const createDefaults = {
   mode: "manual_step" as SimulationMode,
@@ -130,9 +134,9 @@ function cleanText(value: unknown, maxChars = 220) {
 }
 
 function scoreColor(value: number) {
-  if (value >= 72) return "text-emerald-300";
-  if (value >= 48) return "text-amber-200";
-  return "text-rose-300";
+  if (value >= 72) return "text-white";
+  if (value >= 48) return "text-gray-300";
+  return "text-gray-500";
 }
 
 function metricValue(
@@ -210,6 +214,11 @@ export default function DashboardPage() {
   const [endingSimulation, setEndingSimulation] = useState(false);
   const [bootLoading, setBootLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showOnboardingTransition, setShowOnboardingTransition] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.sessionStorage.getItem(ONBOARDING_DASHBOARD_TRANSITION_KEY) === "1";
+  });
+  const [fadeOutTransition, setFadeOutTransition] = useState(false);
 
   const avatar = useMemo(() => asAvatar(setup), [setup]);
   const latestNode = nodes[nodes.length - 1] ?? null;
@@ -243,6 +252,24 @@ export default function DashboardPage() {
     }
     setFocusedNodeId(latestNodeId);
   }, [latestNodeId]);
+
+  useEffect(() => {
+    if (!showOnboardingTransition) return;
+
+    window.sessionStorage.removeItem(ONBOARDING_DASHBOARD_TRANSITION_KEY);
+
+    const darkFadeTimer = window.setTimeout(() => {
+      setFadeOutTransition(true);
+    }, 1650);
+    const finishTimer = window.setTimeout(() => {
+      setShowOnboardingTransition(false);
+    }, 2350);
+
+    return () => {
+      window.clearTimeout(darkFadeTimer);
+      window.clearTimeout(finishTimer);
+    };
+  }, [showOnboardingTransition]);
 
   const bootDashboard = useCallback(async () => {
     setBootLoading(true);
@@ -480,358 +507,395 @@ export default function DashboardPage() {
 
   if (bootLoading) {
     return (
-      <main className={styles.loadingShell}>
-        <div className={styles.loadingCard}>Loading simulation dashboard...</div>
-      </main>
+      <>
+        <main className={styles.loadingShell}>
+          <ClassicLoader />
+        </main>
+        {showOnboardingTransition ? (
+          <div
+            className={`${styles.onboardingTransitionOverlay} ${fadeOutTransition ? styles.onboardingTransitionFadeOut : ""
+              }`}
+            aria-hidden
+          >
+            <Image
+              src="/cloudy_transition.gif"
+              alt=""
+              fill
+              unoptimized
+              priority
+              sizes="100vw"
+              className={styles.onboardingTransitionGif}
+            />
+          </div>
+        ) : null}
+      </>
     );
   }
 
   return (
-    <main className={styles.page}>
-      <div className={styles.shell}>
-        {activeRun ? (
-          <div className={styles.frameShell}>
-            <div className={styles.mainGrid}>
-              <section className={styles.leftColumn}>
-                <div className={`${styles.timelinePanel} ${styles.panelFrame}`}>
-                <div className={styles.timelineTopRow}>
-                  <p className={styles.timelineLabel}>Timeline</p>
-                  <div className={styles.compactControls}>
-                    <select
-                      aria-label="Current simulation"
-                      value={activeRun?.id ?? ""}
-                      onChange={(event) => void selectSimulation(event.target.value)}
-                      className={styles.compactSelect}
-                    >
-                      {(simulations ?? []).map((simulation) => (
-                        <option key={simulation.id} value={simulation.id}>
-                          {simulation.title}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      aria-label="New simulation mode"
-                      value={createMode}
-                      onChange={(event) => setCreateMode(event.target.value as SimulationMode)}
-                      className={styles.compactMiniSelect}
-                    >
-                      <option value="manual_step">Manual</option>
-                      <option value="auto_future">Auto</option>
-                    </select>
-                    <select
-                      aria-label="New simulation horizon"
-                      value={createHorizonPreset}
-                      onChange={(event) => setCreateHorizonPreset(event.target.value as SimulationHorizonPreset)}
-                      className={styles.compactMiniSelect}
-                    >
-                      <option value="1_week">1w</option>
-                      <option value="1_year">1y</option>
-                      <option value="10_years">10y</option>
-                      <option value="whole_life">Life</option>
-                    </select>
-                    <Button
-                      type="button"
-                      onClick={() => void createSimulation()}
-                      disabled={creatingSimulation}
-                      className={styles.compactButton}
-                    >
-                      <PlusCircle className="h-4 w-4" />
-                      {creatingSimulation ? "Creating..." : "New"}
-                    </Button>
-                  </div>
-                </div>
-                <p className={styles.timelineMeta}>
-                  {activeRun.title} • {nodes.length} nodes • day {activeRun.currentDay}
-                </p>
-                <div className={styles.timelineScroll}>
-                  <div className={styles.timelineTrack}>
-                    {nodes.map((node, index) => (
-                      <div key={node.id} className={styles.timelineStep}>
-                        <button
-                          type="button"
-                          onClick={() => setFocusedNodeId(node.id)}
-                          className={`${styles.timelineNode} ${node.id === focusedNode?.id ? styles.timelineNodeActive : ""}`}
+    <>
+      <main className={`${styles.page} ${showOnboardingTransition ? styles.pageHidden : ""}`}>
+        <div className={styles.shell}>
+          {activeRun ? (
+            <div className={styles.frameShell}>
+              <div className={styles.mainGrid}>
+                <section className={styles.leftColumn}>
+                  <div className={styles.timelinePanel}>
+                    <div className={styles.timelineTopRow}>
+                      <p className={styles.timelineLabel}>Timeline</p>
+                      <div className={styles.compactControls}>
+                        <select
+                          aria-label="Current simulation"
+                          value={activeRun?.id ?? ""}
+                          onChange={(event) => void selectSimulation(event.target.value)}
+                          className={styles.compactSelect}
                         >
-                          {node.seq}
-                        </button>
-                        {index < nodes.length - 1 ? (
-                          <span className={styles.timelineConnector} aria-hidden />
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                </div>
-
-                <div className={`${styles.stagePanel} ${styles.panelFrame}`}>
-                  <div className={styles.stageTopRow}>
-                    <div className={styles.bubbleLarge}>
-                      <p className={styles.bubbleTitle}>Story + changelog</p>
-                      <p className={styles.bubbleBody}>{headlineStory}</p>
-                      <div className={styles.changeList}>
-                        {changelog.length > 0 ? (
-                          changelog.map((entry, index) => (
-                            <p key={`${entry}-${index}`}>• {entry}</p>
-                          ))
-                        ) : (
-                          <p>No metric change logged on this node.</p>
-                        )}
+                          {(simulations ?? []).map((simulation) => (
+                            <option key={simulation.id} value={simulation.id}>
+                              {simulation.title}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          aria-label="New simulation mode"
+                          value={createMode}
+                          onChange={(event) => setCreateMode(event.target.value as SimulationMode)}
+                          className={styles.compactMiniSelect}
+                        >
+                          <option value="manual_step">Manual</option>
+                          <option value="auto_future">Auto</option>
+                        </select>
+                        <select
+                          aria-label="New simulation horizon"
+                          value={createHorizonPreset}
+                          onChange={(event) => setCreateHorizonPreset(event.target.value as SimulationHorizonPreset)}
+                          className={styles.compactMiniSelect}
+                        >
+                          <option value="1_week">1w</option>
+                          <option value="1_year">1y</option>
+                          <option value="10_years">10y</option>
+                          <option value="whole_life">Life</option>
+                        </select>
+                        <Button
+                          type="button"
+                          onClick={() => void createSimulation()}
+                          disabled={creatingSimulation}
+                          className={styles.compactButton}
+                        >
+                          <PlusCircle className="h-4 w-4" />
+                          {creatingSimulation ? <ClassicLoader size="sm" /> : "New"}
+                        </Button>
                       </div>
                     </div>
-                  </div>
-
-                  <div className={styles.stageBottomRow}>
-                    <div className={styles.avatarLarge}>
-                      <PixelAvatar avatar={avatar} size={230} />
-                    </div>
-
-                    {activeRun.mode === "manual_step" && activeRun.status === "active" ? (
-                      <div className={styles.optionsGrid}>
-                        {manualOptions.map((option) => (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => void performStep(option)}
-                            disabled={actionLoading}
-                            className={styles.optionCard}
-                          >
-                            <p className={styles.optionCardTitle}>{option.title}</p>
-                            <p className={styles.optionCardDesc}>{option.description}</p>
-                            <p className={styles.optionCardHint}>{option.impactHint}</p>
-                          </button>
-                        ))}
-                        <div className={styles.customOptionCard}>
-                          <p className={styles.customTitle}>Custom (manual)</p>
-                          <Textarea
-                            value={customAction}
-                            onChange={(event) => setCustomAction(event.target.value)}
-                            placeholder="Define your own next action..."
-                            className={styles.customInput}
-                          />
-                          <div className="mt-2 flex justify-end">
-                            <Button
+                    <p className={styles.timelineMeta}>
+                      {activeRun.title} • {nodes.length} nodes • day {activeRun.currentDay}
+                    </p>
+                    <div className={styles.timelineScroll}>
+                      <div className={styles.timelineTrack}>
+                        {nodes.map((node, index) => (
+                          <div key={node.id} className={styles.timelineStep}>
+                            <button
                               type="button"
-                              onClick={() => void performStep()}
-                              disabled={actionLoading || !cleanText(customAction, 220)}
-                              className={styles.customRunButton}
+                              onClick={() => setFocusedNodeId(node.id)}
+                              className={`${styles.timelineNode} ${node.id === focusedNode?.id ? styles.timelineNodeActive : ""}`}
                             >
-                              {actionLoading ? "Simulating..." : "Run"}
-                            </Button>
+                              {node.seq}
+                            </button>
+                            {index < nodes.length - 1 ? (
+                              <span className={styles.timelineConnector} aria-hidden />
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={styles.stagePanel}>
+                    <div className={styles.avatarArea}>
+                      <div className={styles.avatarContainer}>
+                        <PixelAvatar avatar={avatar} size={230} />
+                      </div>
+                      <div className={styles.bubbleContainer}>
+                        <p className={styles.bubbleTitle}>Story + changelog</p>
+                        <p className={styles.bubbleBody}>{headlineStory}</p>
+                        <div className={styles.changeList}>
+                          {changelog.length > 0 ? (
+                            changelog.map((entry, index) => (
+                              <p key={`${entry}-${index}`}>• {entry}</p>
+                            ))
+                          ) : (
+                            <p>No metric change logged on this node.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={styles.optionsArea}>
+                      {activeRun.mode === "manual_step" && activeRun.status === "active" ? (
+                        <div className={styles.optionsGrid}>
+                          {manualOptions.map((option) => (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => void performStep(option)}
+                              disabled={actionLoading}
+                              className={styles.optionCard}
+                            >
+                              <p className={styles.optionCardTitle}>{option.title}</p>
+                              <p className={styles.optionCardDesc}>{option.description}</p>
+                              <p className={styles.optionCardHint}>{option.impactHint}</p>
+                            </button>
+                          ))}
+                          <div className={styles.customOptionCard}>
+                            <p className={styles.customTitle}>Custom (manual)</p>
+                            <Textarea
+                              value={customAction}
+                              onChange={(event) => setCustomAction(event.target.value)}
+                              placeholder="Define your own next action..."
+                              className={styles.customInput}
+                            />
+                            <div className="mt-2 flex justify-end">
+                              <Button
+                                type="button"
+                                onClick={() => void performStep()}
+                                disabled={actionLoading || !cleanText(customAction, 220)}
+                                className={styles.customRunButton}
+                              >
+                                {actionLoading ? <ClassicLoader size="sm" /> : "Run"}
+                              </Button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ) : (
-                      <div className={styles.autoHintBlock}>
-                        <p className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4" />
-                          {activeRun.mode === "auto_future"
-                            ? "Auto mode generated this timeline from your memory context."
-                            : "This simulation is ended. Start a new run to continue."}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </section>
-
-              <aside className={`${styles.statsPanel} ${styles.panelFrame}`}>
-                <div className={styles.statsHeader}>
-                  <p className={styles.statsTitle}>Stats</p>
-                  <div className={styles.statsActions}>
-                    <Link href="/settings" className={styles.sideAction}>
-                      <Settings className="h-4 w-4" />
-                      Settings
-                    </Link>
-                    <Button
-                      type="button"
-                      onClick={() => void endGame()}
-                      disabled={activeRun.status === "ended" || endingSimulation}
-                      className={styles.sideEndButton}
-                    >
-                      <Flag className="h-4 w-4" />
-                      {endingSimulation ? "Ending..." : "End"}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className={styles.statsList}>
-                  {metricCards.map((metric) => {
-                    const value = metricValue(runMetrics, metric.key);
-                    const baseline = metricValue(baselineMetrics, metric.key);
-                    const delta = value - baseline;
-                    const sign = delta >= 0 ? "+" : "";
-                    return (
-                      <button
-                        key={metric.key}
-                        type="button"
-                        onClick={() => setSelectedMetric(metric.key)}
-                        className={styles.statCard}
-                      >
-                        <div className={styles.statTop}>
-                          <p className={styles.statLabel}>{metric.label}</p>
-                          <p className={`${styles.statValue} ${scoreColor(value)}`}>
-                            {metric.format(value)}
+                      ) : (
+                        <div className={styles.autoHintBlock}>
+                          <p className="flex items-center gap-2">
+                            <Sparkles className="h-4 w-4" />
+                            {activeRun.mode === "auto_future"
+                              ? "Auto mode generated this timeline from your memory context."
+                              : "This simulation is ended. Start a new run to continue."}
                           </p>
                         </div>
-                        <p className={styles.statDelta}>
-                          {sign}
-                          {metric.key === "netWorth" || metric.key === "salary" || metric.key === "monthlyExpenses"
-                            ? `$${Math.round(delta).toLocaleString()}`
-                            : Math.round(delta)}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </aside>
-            </div>
-          </div>
-        ) : (
-          <section className={styles.emptyState}>
-            <p>No simulation found yet. Create one to begin.</p>
-            <div className={styles.emptyControls}>
-              <select
-                aria-label="New simulation mode"
-                value={createMode}
-                onChange={(event) => setCreateMode(event.target.value as SimulationMode)}
-                className={styles.compactMiniSelect}
-              >
-                <option value="manual_step">Manual</option>
-                <option value="auto_future">Auto</option>
-              </select>
-              <select
-                aria-label="New simulation horizon"
-                value={createHorizonPreset}
-                onChange={(event) => setCreateHorizonPreset(event.target.value as SimulationHorizonPreset)}
-                className={styles.compactMiniSelect}
-              >
-                <option value="1_week">1w</option>
-                <option value="1_year">1y</option>
-                <option value="10_years">10y</option>
-                <option value="whole_life">Life</option>
-              </select>
-              <Button
-                type="button"
-                onClick={() => void createSimulation()}
-                disabled={creatingSimulation}
-                className={styles.compactButton}
-              >
-                <PlusCircle className="h-4 w-4" />
-                {creatingSimulation ? "Creating..." : "Create Simulation"}
-              </Button>
-            </div>
-          </section>
-        )}
+                      )}
+                    </div>
+                  </div>
+                </section>
 
-        {wrapSummary ? (
-          <section className={`${styles.wrapPanel} ${styles.panelFrame}`}>
-            <div className={styles.wrapHeader}>
-              <div>
-                <p className={styles.wrapLabel}>Simulation End</p>
-                <h2 className={styles.wrapTitle}>Wrapped: {wrapSummary.title}</h2>
-                <p className={styles.wrapText}>{wrapSummary.summaryParagraph}</p>
+                <aside className={styles.statsPanel}>
+                  <div className={styles.statsHeader}>
+                    <p className={styles.statsTitle}>Stats</p>
+                    <div className={styles.statsActions}>
+                      <Link href="/settings" className={styles.sideAction}>
+                        <Settings className="h-4 w-4" />
+                        Settings
+                      </Link>
+                      <Button
+                        type="button"
+                        onClick={() => void endGame()}
+                        disabled={activeRun.status === "ended" || endingSimulation}
+                        className={styles.sideEndButton}
+                      >
+                        <Flag className="h-4 w-4" />
+                        {endingSimulation ? <ClassicLoader size="sm" /> : "End"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className={styles.statsList}>
+                    {metricCards.map((metric) => {
+                      const value = metricValue(runMetrics, metric.key);
+                      const baseline = metricValue(baselineMetrics, metric.key);
+                      const delta = value - baseline;
+                      const sign = delta >= 0 ? "+" : "";
+                      return (
+                        <button
+                          key={metric.key}
+                          type="button"
+                          onClick={() => setSelectedMetric(metric.key)}
+                          className={styles.statCard}
+                        >
+                          <div className={styles.statTop}>
+                            <p className={styles.statLabel}>{metric.label}</p>
+                            <p className={`${styles.statValue} ${scoreColor(value)}`}>
+                              {metric.format(value)}
+                            </p>
+                          </div>
+                          <p className={styles.statDelta}>
+                            {sign}
+                            {metric.key === "netWorth" || metric.key === "salary" || metric.key === "monthlyExpenses"
+                              ? `$${Math.round(delta).toLocaleString()}`
+                              : Math.round(delta)}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </aside>
               </div>
-              <Button type="button" onClick={() => void shareWrap()} className={styles.wrapShare}>
-                <Share2 className="mr-1 h-4 w-4" />
-                Share Wrapped
-              </Button>
             </div>
-            <div className={styles.wrapDownloadRow}>
-              <Button type="button" onClick={downloadWrapGraphic} className={styles.wrapDownload}>
-                <Download className="mr-1 h-4 w-4" />
-                Download Graphic
-              </Button>
-            </div>
-            <div className={styles.wrapGrid}>
-              <div className={styles.wrapStat}>
-                <p className={styles.wrapStatLabel}>Top Growth Metric</p>
-                <p className={styles.wrapStatValue}>
-                  {wrapSummary.topGrowthMetric} (+{wrapSummary.topGrowthValue})
+          ) : (
+            <section className={styles.emptyState}>
+              <p>No simulation found yet. Create one to begin.</p>
+              <div className={styles.emptyControls}>
+                <select
+                  aria-label="New simulation mode"
+                  value={createMode}
+                  onChange={(event) => setCreateMode(event.target.value as SimulationMode)}
+                  className={styles.compactMiniSelect}
+                >
+                  <option value="manual_step">Manual</option>
+                  <option value="auto_future">Auto</option>
+                </select>
+                <select
+                  aria-label="New simulation horizon"
+                  value={createHorizonPreset}
+                  onChange={(event) => setCreateHorizonPreset(event.target.value as SimulationHorizonPreset)}
+                  className={styles.compactMiniSelect}
+                >
+                  <option value="1_week">1w</option>
+                  <option value="1_year">1y</option>
+                  <option value="10_years">10y</option>
+                  <option value="whole_life">Life</option>
+                </select>
+                <Button
+                  type="button"
+                  onClick={() => void createSimulation()}
+                  disabled={creatingSimulation}
+                  className={styles.compactButton}
+                >
+                  <PlusCircle className="h-4 w-4" />
+                  {creatingSimulation ? <ClassicLoader size="sm" /> : "Create Simulation"}
+                </Button>
+              </div>
+            </section>
+          )}
+
+          {wrapSummary ? (
+            <section className={styles.wrapPanel}>
+              <div className={styles.wrapHeader}>
+                <div>
+                  <p className={styles.wrapLabel}>Simulation End</p>
+                  <h2 className={styles.wrapTitle}>Wrapped: {wrapSummary.title}</h2>
+                  <p className={styles.wrapText}>{wrapSummary.summaryParagraph}</p>
+                </div>
+                <Button type="button" onClick={() => void shareWrap()} className={styles.wrapShare}>
+                  <Share2 className="mr-1 h-4 w-4" />
+                  Share Wrapped
+                </Button>
+              </div>
+              <div className={styles.wrapDownloadRow}>
+                <Button type="button" onClick={downloadWrapGraphic} className={styles.wrapDownload}>
+                  <Download className="mr-1 h-4 w-4" />
+                  Download Graphic
+                </Button>
+              </div>
+              <div className={styles.wrapGrid}>
+                <div className={styles.wrapStat}>
+                  <p className={styles.wrapStatLabel}>Top Growth Metric</p>
+                  <p className={styles.wrapStatValue}>
+                    {wrapSummary.topGrowthMetric} (+{wrapSummary.topGrowthValue})
+                  </p>
+                </div>
+                <div className={styles.wrapStat}>
+                  <p className={styles.wrapStatLabel}>Total Nodes</p>
+                  <p className={styles.wrapStatValue}>{wrapSummary.totalNodes}</p>
+                </div>
+                <div className={styles.wrapStat}>
+                  <p className={styles.wrapStatLabel}>Simulated Days</p>
+                  <p className={styles.wrapStatValue}>{wrapSummary.durationDays}</p>
+                </div>
+              </div>
+              <div className={styles.wrapMoments}>
+                <p className={styles.wrapStatLabel}>Story Highlights</p>
+                <div className="mt-2 space-y-2">
+                  {wrapSummary.topStoryMoments.slice(0, 4).map((moment) => (
+                    <p key={`${moment.seq}-${moment.label}`} className="text-sm text-zinc-100/90">
+                      <span className={styles.wrapMomentBadge}>N{moment.seq}</span>
+                      {moment.label}: {moment.story}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {error ? <div className={styles.errorBar}>{error}</div> : null}
+        </div >
+        <Dialog open={Boolean(selectedMetric)} onOpenChange={(open) => (!open ? setSelectedMetric(null) : null)}>
+          <DialogContent className={`max-w-2xl ${styles.dialogFrame}`}>
+            <DialogHeader>
+              <DialogTitle className={`flex items-center gap-2 ${styles.dialogTitle}`}>
+                <BarChart3 className="h-5 w-5 text-white" />
+                {activeMetricConfig?.label ?? "Metric details"}
+              </DialogTitle>
+              <DialogDescription className={styles.dialogSubtitle}>
+                {activeMetricConfig?.detail}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className={styles.dialogStatsGrid}>
+              <div className={styles.dialogStat}>
+                <p className={styles.dialogStatLabel}>Current</p>
+                <p className={`${styles.dialogStatValue} ${scoreColor(activeMetricCurrent)}`}>
+                  {activeMetricConfig?.format(activeMetricCurrent)}
                 </p>
               </div>
-              <div className={styles.wrapStat}>
-                <p className={styles.wrapStatLabel}>Total Nodes</p>
-                <p className={styles.wrapStatValue}>{wrapSummary.totalNodes}</p>
+              <div className={styles.dialogStat}>
+                <p className={styles.dialogStatLabel}>Baseline</p>
+                <p className={styles.dialogStatValue}>
+                  {activeMetricConfig?.format(activeMetricBaseline)}
+                </p>
               </div>
-              <div className={styles.wrapStat}>
-                <p className={styles.wrapStatLabel}>Simulated Days</p>
-                <p className={styles.wrapStatValue}>{wrapSummary.durationDays}</p>
-              </div>
-            </div>
-            <div className={styles.wrapMoments}>
-              <p className={styles.wrapStatLabel}>Story Highlights</p>
-              <div className="mt-2 space-y-2">
-                {wrapSummary.topStoryMoments.slice(0, 4).map((moment) => (
-                  <p key={`${moment.seq}-${moment.label}`} className="text-sm text-zinc-100/90">
-                    <span className={styles.wrapMomentBadge}>N{moment.seq}</span>
-                    {moment.label}: {moment.story}
-                  </p>
-                ))}
+              <div className={styles.dialogStat}>
+                <p className={styles.dialogStatLabel}>Change</p>
+                <p className={`${styles.dialogStatValue} ${activeMetricDelta >= 0 ? "text-white" : "text-gray-400"}`}>
+                  {activeMetricDelta >= 0 ? "+" : ""}
+                  {selectedMetric === "netWorth" || selectedMetric === "salary" || selectedMetric === "monthlyExpenses"
+                    ? `$${Math.round(activeMetricDelta).toLocaleString()}`
+                    : Math.round(activeMetricDelta)}
+                </p>
               </div>
             </div>
-          </section>
-        ) : null}
 
-        {error ? <div className={styles.errorBar}>{error}</div> : null}
-      </div>
-      <Dialog open={Boolean(selectedMetric)} onOpenChange={(open) => (!open ? setSelectedMetric(null) : null)}>
-        <DialogContent className={`max-w-2xl ${styles.dialogFrame}`}>
-          <DialogHeader>
-            <DialogTitle className={`flex items-center gap-2 ${styles.dialogTitle}`}>
-              <BarChart3 className="h-5 w-5 text-cyan-200" />
-              {activeMetricConfig?.label ?? "Metric details"}
-            </DialogTitle>
-            <DialogDescription className={styles.dialogSubtitle}>
-              {activeMetricConfig?.detail}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className={styles.dialogStatsGrid}>
-            <div className={styles.dialogStat}>
-              <p className={styles.dialogStatLabel}>Current</p>
-              <p className={`${styles.dialogStatValue} ${scoreColor(activeMetricCurrent)}`}>
-                {activeMetricConfig?.format(activeMetricCurrent)}
+            <div className={styles.dialogTrendBox}>
+              <p className={styles.dialogTrendHeader}>
+                <Clock3 className="h-4 w-4" />
+                Timeline Trend
               </p>
+              <div className={styles.dialogBars}>
+                {activeMetricSeries.map((point, index) => {
+                  const maxPoint = Math.max(...activeMetricSeries, 1);
+                  const barHeight = Math.max(8, Math.round((point / maxPoint) * 100));
+                  return (
+                    <div
+                      key={`${point}-${index}`}
+                      className={styles.dialogBar}
+                      style={{ height: `${barHeight}%` }}
+                      title={`Point ${index + 1}: ${Math.round(point)}`}
+                    />
+                  );
+                })}
+              </div>
             </div>
-            <div className={styles.dialogStat}>
-              <p className={styles.dialogStatLabel}>Baseline</p>
-              <p className={styles.dialogStatValue}>
-                {activeMetricConfig?.format(activeMetricBaseline)}
-              </p>
-            </div>
-            <div className={styles.dialogStat}>
-              <p className={styles.dialogStatLabel}>Change</p>
-              <p className={`${styles.dialogStatValue} ${activeMetricDelta >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                {activeMetricDelta >= 0 ? "+" : ""}
-                {selectedMetric === "netWorth" || selectedMetric === "salary" || selectedMetric === "monthlyExpenses"
-                  ? `$${Math.round(activeMetricDelta).toLocaleString()}`
-                  : Math.round(activeMetricDelta)}
-              </p>
-            </div>
-          </div>
-
-          <div className={styles.dialogTrendBox}>
-            <p className={styles.dialogTrendHeader}>
-              <Clock3 className="h-4 w-4" />
-              Timeline Trend
-            </p>
-            <div className={styles.dialogBars}>
-              {activeMetricSeries.map((point, index) => {
-                const maxPoint = Math.max(...activeMetricSeries, 1);
-                const barHeight = Math.max(8, Math.round((point / maxPoint) * 100));
-                return (
-                  <div
-                    key={`${point}-${index}`}
-                    className={styles.dialogBar}
-                    style={{ height: `${barHeight}%` }}
-                    title={`Point ${index + 1}: ${Math.round(point)}`}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </main>
+          </DialogContent>
+        </Dialog>
+      </main>
+      {showOnboardingTransition ? (
+        <div
+          className={`${styles.onboardingTransitionOverlay} ${fadeOutTransition ? styles.onboardingTransitionFadeOut : ""
+            }`}
+          aria-hidden
+        >
+          <Image
+            src="/cloudy_transition.gif"
+            alt=""
+            fill
+            unoptimized
+            priority
+            sizes="100vw"
+            className={styles.onboardingTransitionGif}
+          />
+        </div>
+      ) : null}
+    </>
   );
 }

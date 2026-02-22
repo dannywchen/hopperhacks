@@ -16,6 +16,7 @@ import { hydrateLocalSimulationStateFromSupabase } from "@/lib/client/cloud-stat
 import { loadSetup } from "@/lib/client/setup-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import ClassicLoader from "@/components/ui/loader";
 import { Textarea } from "@/components/ui/textarea";
 import type { UserSetup } from "@/lib/types";
 
@@ -209,9 +210,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <main className="mystic-bg flex min-h-screen items-center justify-center px-6 text-zinc-100">
-        <p className="rounded-xl border border-white/15 bg-zinc-900/75 px-5 py-3 text-sm">
-          Loading settings...
-        </p>
+        <ClassicLoader />
       </main>
     );
   }

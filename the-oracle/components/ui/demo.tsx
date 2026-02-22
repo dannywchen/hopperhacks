@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Music2, VolumeX, X } from "lucide-react";
 import { motion, stagger, useAnimate } from "motion/react";
 import Floating, { FloatingElement } from "@/components/ui/parallax-floating";
+import ClassicLoader from "@/components/ui/loader";
 
 const exampleImages = [
   {
@@ -323,3 +324,7 @@ const Preview = () => {
 };
 
 export { Preview };
+
+export default function DemoOne() {
+  return <ClassicLoader />;
+}

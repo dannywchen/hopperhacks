@@ -51,6 +51,7 @@ import type {
 } from "@/lib/types";
 
 const ONBOARDING_BOOTSTRAP_KEY = "deep-sim.onboarding-bootstrap.v1";
+const ONBOARDING_DASHBOARD_TRANSITION_KEY = "deep-sim.onboarding-dashboard-transition.v1";
 
 const ONBOARDING_OUTLINE_VARS: CSSProperties = {
   "--slot-line-width": `${onboardingDesign.outline.slot.lineWidthPx}px`,
@@ -104,7 +105,7 @@ const STEP_CONTENT: Record<
   },
   story: {
     title: "Guided Interview",
-    subtitle: "Chat with the oracle to add richer life context before simulation.",
+    subtitle: "The more you chat with the oracle, the more accurate the simulation will get for you.",
   },
   simulation: {
     title: "Start your simulation",
@@ -183,10 +184,10 @@ const AVATAR_TABS: Array<{
   id: AvatarTab;
   label: string;
 }> = [
-  { id: "hair", label: "Hair" },
-  { id: "clothes", label: "Clothes" },
-  { id: "head", label: "Skin" },
-];
+    { id: "hair", label: "Hair" },
+    { id: "clothes", label: "Clothes" },
+    { id: "head", label: "Skin" },
+  ];
 
 const HEAD_TONE_OPTIONS: Array<{ id: SpriteHeadTone; label: string }> = [
   { id: "beige", label: "Beige" },
@@ -385,8 +386,8 @@ async function fetchJson<T>(
     if (!response.ok) {
       const message =
         jsonPayload &&
-        typeof jsonPayload === "object" &&
-        ("error" in jsonPayload || "message" in jsonPayload)
+          typeof jsonPayload === "object" &&
+          ("error" in jsonPayload || "message" in jsonPayload)
           ? ((jsonPayload as { error?: string; message?: string }).error ??
             (jsonPayload as { error?: string; message?: string }).message ??
             `Request failed: ${response.status}`)
@@ -849,8 +850,7 @@ function PixelSprite({
       <div className="absolute left-[14%] top-[-1%] h-[42%] w-[72%]">
         <Image
           src={spritePartSrc(
-            `hair/${variant === "side" ? "side" : "front"}/${
-              variant === "side" ? layers.hairSide : layers.hairFront
+            `hair/${variant === "side" ? "side" : "front"}/${variant === "side" ? layers.hairSide : layers.hairFront
             }`,
           )}
           alt=""
@@ -971,8 +971,8 @@ export function OnboardingWizard() {
     const linkedInSignal = linkedinText
       ? linkedinText.trim()
       : hasLinkedinUrl
-      ? `LinkedIn URL: ${linkedinUrl.trim()}`
-      : "";
+        ? `LinkedIn URL: ${linkedinUrl.trim()}`
+        : "";
     return [resumeText.trim(), linkedInSignal].filter(Boolean).join("\n\n");
   }, [hasLinkedinUrl, linkedinText, linkedinUrl, resumeText]);
   const storyCharCount = useMemo(() => lifeStory.trim().length, [lifeStory]);
@@ -1023,7 +1023,7 @@ export function OnboardingWizard() {
   );
   const currentInterviewerSprite =
     interviewerSprites[
-      interviewerSpriteIndex % Math.max(1, interviewerSprites.length)
+    interviewerSpriteIndex % Math.max(1, interviewerSprites.length)
     ] ??
     interviewerSprites[0] ??
     DEFAULT_INTERVIEWER_SPRITES[0];
@@ -1234,7 +1234,7 @@ export function OnboardingWizard() {
         if (!cancelled && status.completedOnboarding) {
           router.replace("/dashboard");
         }
-      } catch {}
+      } catch { }
     }
 
     void verifySession();
@@ -1270,7 +1270,7 @@ export function OnboardingWizard() {
           method: "POST",
           timeoutMs: 8_000,
         });
-      } catch {}
+      } catch { }
     }
     void bootstrap();
     return () => {
@@ -1295,13 +1295,13 @@ export function OnboardingWizard() {
 
         const discoveredSprites = Array.isArray(result?.sprites)
           ? result.sprites.filter(
-              (sprite): sprite is string =>
-                typeof sprite === "string" && sprite.trim().length > 0,
-            )
+            (sprite): sprite is string =>
+              typeof sprite === "string" && sprite.trim().length > 0,
+          )
           : [];
         if (discoveredSprites.length === 0) return;
         setInterviewerSprites(discoveredSprites);
-      } catch {}
+      } catch { }
     };
 
     void loadInterviewerSprites();
@@ -1655,6 +1655,7 @@ export function OnboardingWizard() {
       saveSetup(result.setup);
       await syncLocalSimulationStateToSupabase();
       globalThis?.sessionStorage?.setItem(ONBOARDING_BOOTSTRAP_KEY, "1");
+      globalThis?.sessionStorage?.setItem(ONBOARDING_DASHBOARD_TRANSITION_KEY, "1");
       router.push(nextPath);
     } catch (err: any) {
       setError(err?.message ?? "Unable to save onboarding.");
@@ -1740,48 +1741,47 @@ export function OnboardingWizard() {
       </div>
 
       <div className="space-y-3 rounded-2xl border border-white/15 bg-zinc-900/70 p-4">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
-          Focus areas
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
+            Focus areas
+          </p>
+          <p className="text-[11px] text-zinc-400">
+            {coveredDomainCount} of {INTERVIEW_DOMAINS.length}
+          </p>
+        </div>
+        <p className="text-xs leading-relaxed text-zinc-500">
+          Coverage updates as your interview responses grow.
         </p>
-        <p className="text-[11px] text-zinc-400">
-          {coveredDomainCount} of {INTERVIEW_DOMAINS.length}
-        </p>
-      </div>
-      <p className="text-xs leading-relaxed text-zinc-500">
-        Coverage updates as your interview responses grow.
-      </p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {interviewQuestionCatalog.map((item) => {
-          const domainCoverage = coverage[item.domainId] ?? 0;
-          return (
-            <div
-              key={item.domainId}
-              className="rounded-xl border border-white/10 bg-zinc-950/70 p-2.5"
-            >
-              <p className="text-xs font-semibold text-zinc-200">{item.label}</p>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-                <div
-                  className="h-full rounded-full bg-zinc-200 transition-[width] duration-300"
-                  style={{ width: `${Math.max(4, Math.round(domainCoverage))}%` }}
-                />
+        <div className="grid gap-2 sm:grid-cols-2">
+          {interviewQuestionCatalog.map((item) => {
+            const domainCoverage = coverage[item.domainId] ?? 0;
+            return (
+              <div
+                key={item.domainId}
+                className="rounded-xl border border-white/10 bg-zinc-950/70 p-2.5"
+              >
+                <p className="text-xs font-semibold text-zinc-200">{item.label}</p>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className="h-full rounded-full bg-zinc-200 transition-[width] duration-300"
+                    style={{ width: `${Math.max(4, Math.round(domainCoverage))}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-zinc-400">
+                  {Math.round(domainCoverage)}%
+                </p>
               </div>
-              <p className="mt-1 text-[11px] text-zinc-400">
-                {Math.round(domainCoverage)}%
-              </p>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 
   return (
     <div
-      className={`mystic-bg min-h-[100svh] text-zinc-100 ${
-        stepId === "story" ? "h-[100svh] overflow-hidden" : ""
-      }`}
+      className={`mystic-bg min-h-[100svh] text-zinc-100 ${stepId === "story" ? "h-[100svh] overflow-hidden" : ""
+        }`}
       style={ONBOARDING_OUTLINE_VARS}
     >
       <div className="relative z-10 w-full px-2 pt-2 sm:px-3 sm:pt-3">
@@ -1793,13 +1793,11 @@ export function OnboardingWizard() {
       </div>
 
       <div
-        className={`relative z-10 mx-auto flex w-full flex-col px-4 pt-4 sm:px-6 ${
-          onboardingContentMaxWidthClass
-        } ${
-          stepId === "story"
+        className={`relative z-10 mx-auto flex w-full flex-col px-4 pt-4 sm:px-6 ${onboardingContentMaxWidthClass
+          } ${stepId === "story"
             ? "h-[calc(100svh-7rem)] overflow-hidden pb-4"
             : "min-h-[calc(100svh-7rem)] pb-6"
-        }`}
+          }`}
       >
         <header className={`text-center ${stepId === "story" ? "shrink-0" : ""}`}>
           <h1 className="arcane-display-title text-3xl leading-tight text-zinc-50 sm:text-4xl">
@@ -1812,9 +1810,8 @@ export function OnboardingWizard() {
           className={`flex-1 min-h-0 ${isPathStep ? "mt-6 flex items-start" : stepId === "story" ? "mt-6 overflow-hidden" : "mt-10"}`}
         >
           <div
-            className={`mx-auto w-full ${onboardingContentMaxWidthClass} ${
-              stepId === "story" ? "h-full min-h-0 overflow-hidden" : ""
-            }`}
+            className={`mx-auto w-full ${onboardingContentMaxWidthClass} ${stepId === "story" ? "h-full min-h-0 overflow-hidden" : ""
+              }`}
           >
             {stepId === "avatar" ? (
               <div className={onboardingStepPanelClass}>
@@ -1954,29 +1951,33 @@ export function OnboardingWizard() {
                   <button
                     type="button"
                     onClick={() => chooseOnboardingPath("minimal")}
-                    className={`arcane-panel onboarding-path-card group relative flex min-h-[18rem] flex-col overflow-hidden rounded-3xl p-6 text-left transition md:min-h-[20rem] md:p-7 ${
-                      onboardingPath === "minimal"
-                        ? "arcane-panel-outline-fat bg-[linear-gradient(180deg,rgba(22,36,64,0.95),rgba(10,16,30,0.96))] shadow-[0_0_0_2px_rgba(168,193,255,0.38),0_18px_36px_rgba(0,0,0,0.42)]"
-                        : "arcane-panel-outline-thin bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.95] hover:opacity-100"
-                    }`}
+                    className={`arcane-panel onboarding-path-card group relative flex min-h-[18rem] flex-col overflow-hidden rounded-3xl border p-6 text-left transition-all duration-200 md:min-h-[20rem] md:p-7 ${onboardingPath === "minimal"
+                        ? "arcane-panel-outline-fat scale-[1.01] border-amber-200/70 bg-[linear-gradient(180deg,rgba(40,34,18,0.95),rgba(14,16,24,0.97))] shadow-[0_0_0_2px_rgba(245,208,124,0.55),0_0_34px_rgba(245,208,124,0.26),0_18px_36px_rgba(0,0,0,0.45)]"
+                        : "arcane-panel-outline-thin border-white/10 bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.8] saturate-75 hover:border-zinc-300/40 hover:opacity-100 hover:saturate-100"
+                      }`}
                     aria-pressed={onboardingPath === "minimal"}
                   >
                     {onboardingPath === "minimal" ? (
-                      <span className="absolute right-3 top-3 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-900">
+                      <span className="absolute right-3 top-3 rounded-full border border-amber-200/70 bg-amber-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-950 shadow-[0_0_14px_rgba(245,208,124,0.55)]">
                         Selected
                       </span>
                     ) : null}
                     <p
-                      className={`arcane-kicker text-[10px] ${
-                        onboardingPath === "minimal" ? "text-blue-200/90" : "text-zinc-400"
-                      }`}
+                      className={`arcane-kicker text-[10px] ${onboardingPath === "minimal" ? "text-amber-200" : "text-zinc-400"
+                        }`}
                     >
                       Fast Setup
                     </p>
-                    <p className="arcane-display-title mt-1 text-2xl font-semibold leading-tight text-zinc-100 md:text-[1.75rem]">
+                    <p
+                      className={`arcane-display-title mt-1 text-2xl font-semibold leading-tight md:text-[1.75rem] ${onboardingPath === "minimal" ? "text-amber-50" : "text-zinc-100"
+                        }`}
+                    >
                       Minimal Path
                     </p>
-                    <ul className="mt-3 max-w-[36ch] list-disc space-y-1.5 pl-5 pr-14 text-[0.93rem] leading-relaxed text-zinc-300">
+                    <ul
+                      className={`mt-3 max-w-[36ch] list-disc space-y-1.5 pl-5 pr-14 text-[0.93rem] leading-relaxed ${onboardingPath === "minimal" ? "text-zinc-100" : "text-zinc-300"
+                        }`}
+                    >
                       <li>Upload your resume or import LinkedIn.</li>
                       <li>Add a short text description about yourself.</li>
                       <li>Choose simulation settings and continue.</li>
@@ -1998,29 +1999,33 @@ export function OnboardingWizard() {
                   <button
                     type="button"
                     onClick={() => chooseOnboardingPath("guided")}
-                    className={`arcane-panel onboarding-path-card group relative flex min-h-[18rem] flex-col overflow-hidden rounded-3xl p-6 text-left transition md:min-h-[20rem] md:p-7 ${
-                      onboardingPath === "guided"
-                        ? "arcane-panel-outline-fat bg-[linear-gradient(180deg,rgba(22,36,64,0.95),rgba(10,16,30,0.96))] shadow-[0_0_0_2px_rgba(168,193,255,0.38),0_18px_36px_rgba(0,0,0,0.42)]"
-                        : "arcane-panel-outline-thin bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.95] hover:opacity-100"
-                    }`}
+                    className={`arcane-panel onboarding-path-card group relative flex min-h-[18rem] flex-col overflow-hidden rounded-3xl border p-6 text-left transition-all duration-200 md:min-h-[20rem] md:p-7 ${onboardingPath === "guided"
+                        ? "arcane-panel-outline-fat scale-[1.01] border-amber-200/70 bg-[linear-gradient(180deg,rgba(40,34,18,0.95),rgba(14,16,24,0.97))] shadow-[0_0_0_2px_rgba(245,208,124,0.55),0_0_34px_rgba(245,208,124,0.26),0_18px_36px_rgba(0,0,0,0.45)]"
+                        : "arcane-panel-outline-thin border-white/10 bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.8] saturate-75 hover:border-zinc-300/40 hover:opacity-100 hover:saturate-100"
+                      }`}
                     aria-pressed={onboardingPath === "guided"}
                   >
                     {onboardingPath === "guided" ? (
-                      <span className="absolute right-3 top-3 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-900">
+                      <span className="absolute right-3 top-3 rounded-full border border-amber-200/70 bg-amber-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-950 shadow-[0_0_14px_rgba(245,208,124,0.55)]">
                         Selected
                       </span>
                     ) : null}
                     <p
-                      className={`arcane-kicker text-[10px] ${
-                        onboardingPath === "guided" ? "text-blue-200/90" : "text-zinc-400"
-                      }`}
+                      className={`arcane-kicker text-[10px] ${onboardingPath === "guided" ? "text-amber-200" : "text-zinc-400"
+                        }`}
                     >
                       Guided Setup
                     </p>
-                    <p className="arcane-display-title mt-1 text-2xl font-semibold leading-tight text-zinc-100 md:text-[1.75rem]">
+                    <p
+                      className={`arcane-display-title mt-1 text-2xl font-semibold leading-tight md:text-[1.75rem] ${onboardingPath === "guided" ? "text-amber-50" : "text-zinc-100"
+                        }`}
+                    >
                       Detailed Path
                     </p>
-                    <ul className="mt-3 max-w-[37ch] list-disc space-y-1.5 pl-5 pr-14 text-[0.93rem] leading-relaxed text-zinc-300">
+                    <ul
+                      className={`mt-3 max-w-[37ch] list-disc space-y-1.5 pl-5 pr-14 text-[0.93rem] leading-relaxed ${onboardingPath === "guided" ? "text-zinc-100" : "text-zinc-300"
+                        }`}
+                    >
                       <li>Interview-style flow with adaptive follow-up questions.</li>
                       <li>Covers different parts of your life and goals.</li>
                       <li>Improves simulation accuracy and personalization.</li>
@@ -2043,83 +2048,83 @@ export function OnboardingWizard() {
             ) : null}
 
             {stepId === "resume" ? (
-                <div className={onboardingStepPanelClass}>
-                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_56px_minmax(0,1fr)]">
-                    <div className="p-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm text-zinc-200">Upload resume</p>
-                        {uploadingResume ? (
-                          <span className="text-xs text-zinc-400">Parsing...</span>
-                        ) : null}
-                      </div>
-                      <label className="mt-3 flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-xl bg-zinc-800/60 px-4 text-center transition hover:bg-zinc-800/80">
-                        <Upload className="h-5 w-5 text-zinc-300" />
-                        <p className="mt-2 text-sm text-zinc-200">PDF, DOCX, or TXT</p>
-                        <input
-                          type="file"
-                          accept=".pdf,.docx,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                          className="hidden"
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (!file) return;
-                            void handleResumeUpload(file);
-                            event.currentTarget.value = "";
-                          }}
-                        />
-                      </label>
-                      {resumeMeta ? (
-                        <p className="mt-2 text-xs text-zinc-500">
-                          Uploaded: {resumeMeta.fileName}
-                        </p>
+              <div className={onboardingStepPanelClass}>
+                <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_56px_minmax(0,1fr)]">
+                  <div className="p-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-zinc-200">Upload resume</p>
+                      {uploadingResume ? (
+                        <span className="text-xs text-zinc-400">Parsing...</span>
                       ) : null}
                     </div>
+                    <label className="mt-3 flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-xl bg-zinc-800/60 px-4 text-center transition hover:bg-zinc-800/80">
+                      <Upload className="h-5 w-5 text-zinc-300" />
+                      <p className="mt-2 text-sm text-zinc-200">PDF, DOCX, or TXT</p>
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (!file) return;
+                          void handleResumeUpload(file);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    {resumeMeta ? (
+                      <p className="mt-2 text-xs text-zinc-500">
+                        Uploaded: {resumeMeta.fileName}
+                      </p>
+                    ) : null}
+                  </div>
 
-                    <div className="hidden items-center justify-center md:flex">
-                      <div className="flex h-full min-h-[180px] items-center">
-                        <div className="relative flex h-full items-center px-2">
-                          <div className="h-full w-px bg-zinc-700/80" />
-                          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-900 px-2 text-xs text-zinc-500">
-                            or
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="md:hidden">
-                      <div className="relative my-1 h-px bg-zinc-700/80">
+                  <div className="hidden items-center justify-center md:flex">
+                    <div className="flex h-full min-h-[180px] items-center">
+                      <div className="relative flex h-full items-center px-2">
+                        <div className="h-full w-px bg-zinc-700/80" />
                         <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-900 px-2 text-xs text-zinc-500">
                           or
                         </span>
                       </div>
                     </div>
+                  </div>
 
-                    <div className="p-1">
-                      <p className="text-sm text-zinc-200">Import LinkedIn URL</p>
-                      <div className="mt-3 space-y-2">
-                        <Input
-                          value={linkedinUrl}
-                          onChange={(event) => setLinkedinUrl(event.target.value)}
-                          placeholder="https://www.linkedin.com/in/dannywchen/"
-                          className="w-full max-w-[460px] rounded-lg border-0 bg-zinc-800 text-zinc-100 placeholder:text-zinc-500 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)] focus-visible:ring-0 focus-visible:ring-offset-0"
-                        />
-                        <Button
-                          type="button"
-                          onClick={() => void handleLinkedinIngest()}
-                          disabled={!hasLinkedinUrl || importingLinkedin}
-                          className="arcane-button-secondary h-9 rounded-lg px-4 disabled:opacity-40"
-                        >
-                          {importingLinkedin ? "Importing..." : "Import"}
-                        </Button>
-                      </div>
-                      {linkedinImportedForCurrentUrl && linkedinProfile ? (
-                        <p className="mt-2 text-xs text-zinc-400">
-                          Imported profile
-                          {linkedinProfile.fullName ? `: ${linkedinProfile.fullName}` : ""}.
-                        </p>
-                      ) : null}
+                  <div className="md:hidden">
+                    <div className="relative my-1 h-px bg-zinc-700/80">
+                      <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-zinc-900 px-2 text-xs text-zinc-500">
+                        or
+                      </span>
                     </div>
                   </div>
+
+                  <div className="p-1">
+                    <p className="text-sm text-zinc-200">Import LinkedIn URL</p>
+                    <div className="mt-3 space-y-2">
+                      <Input
+                        value={linkedinUrl}
+                        onChange={(event) => setLinkedinUrl(event.target.value)}
+                        placeholder="https://www.linkedin.com/in/dannywchen/"
+                        className="w-full max-w-[460px] rounded-lg border-0 bg-zinc-800 text-zinc-100 placeholder:text-zinc-500 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)] focus-visible:ring-0 focus-visible:ring-offset-0"
+                      />
+                      <Button
+                        type="button"
+                        onClick={() => void handleLinkedinIngest()}
+                        disabled={!hasLinkedinUrl || importingLinkedin}
+                        className="arcane-button-secondary h-9 rounded-lg px-4 disabled:opacity-40"
+                      >
+                        {importingLinkedin ? "Importing..." : "Import"}
+                      </Button>
+                    </div>
+                    {linkedinImportedForCurrentUrl && linkedinProfile ? (
+                      <p className="mt-2 text-xs text-zinc-400">
+                        Imported profile
+                        {linkedinProfile.fullName ? `: ${linkedinProfile.fullName}` : ""}.
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
+              </div>
             ) : null}
 
             {stepId === "story" ? (
@@ -2207,9 +2212,8 @@ export function OnboardingWizard() {
                       width={960}
                       height={1200}
                       priority={stepId === "story"}
-                      className={`h-auto max-h-[min(76svh,760px)] w-auto max-w-full object-contain object-top drop-shadow-[0_30px_40px_rgba(0,0,0,0.45)] transition-transform duration-500 ${
-                        audioPlaying ? "scale-[1.01]" : "scale-100"
-                      }`}
+                      className={`h-auto max-h-[min(76svh,760px)] w-auto max-w-full object-contain object-top drop-shadow-[0_30px_40px_rgba(0,0,0,0.45)] transition-transform duration-500 ${audioPlaying ? "scale-[1.01]" : "scale-100"
+                        }`}
                       sizes="(max-width: 1024px) 94vw, 62vw"
                     />
                     {summonZapActive ? (
@@ -2226,14 +2230,14 @@ export function OnboardingWizard() {
                       questions so you can start the actual simulation!
                     </div>
                     <div className="flex h-full min-h-0 flex-col rounded-[24px] bg-zinc-900/55 p-3 sm:p-4">
-                    <div className="shrink-0 flex items-center justify-between gap-3 pb-3">
-                      <div>
-                        <p className="text-sm font-semibold text-zinc-100">Interview</p>
-                        <p className="text-xs text-zinc-400">
-                          Type or use the mic. Scroll to review full conversation.
-                        </p>
+                      <div className="shrink-0 flex items-center justify-between gap-3 pb-3">
+                        <div>
+                          <p className="text-sm font-semibold text-zinc-100">Interview</p>
+                          <p className="text-xs text-zinc-400">
+                            Type or use the mic. Scroll to review full conversation.
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
                       {interviewStarted ? (
                         <div
@@ -2262,11 +2266,10 @@ export function OnboardingWizard() {
                                   </div>
                                   <p
                                     ref={isLatestAssistant ? latestAssistantBubbleRef : null}
-                                    className={`${storyBubbleAssistantClass} ${
-                                      summonZapActive && isLatestAssistant
+                                    className={`${storyBubbleAssistantClass} ${summonZapActive && isLatestAssistant
                                         ? "interview-summoned-question"
                                         : ""
-                                    }`}
+                                      }`}
                                   >
                                     {message.content}
                                   </p>
@@ -2365,11 +2368,10 @@ export function OnboardingWizard() {
                           key={option.id}
                           type="button"
                           onClick={() => selectSimulationMode(option.id)}
-                          className={`arcane-panel onboarding-path-card group relative flex min-h-[19rem] flex-col overflow-hidden rounded-3xl border p-6 text-left transition-all duration-200 md:min-h-[21rem] md:p-7 ${
-                            selected
+                          className={`arcane-panel onboarding-path-card group relative flex min-h-[19rem] flex-col overflow-hidden rounded-3xl border p-6 text-left transition-all duration-200 md:min-h-[21rem] md:p-7 ${selected
                               ? "arcane-panel-outline-fat scale-[1.01] border-amber-200/70 bg-[linear-gradient(180deg,rgba(40,34,18,0.95),rgba(14,16,24,0.97))] shadow-[0_0_0_2px_rgba(245,208,124,0.55),0_0_34px_rgba(245,208,124,0.26),0_18px_36px_rgba(0,0,0,0.45)]"
                               : "arcane-panel-outline-thin border-white/10 bg-[linear-gradient(180deg,rgba(9,15,28,0.9),rgba(7,12,23,0.94))] opacity-[0.8] saturate-75 hover:border-zinc-300/40 hover:opacity-100 hover:saturate-100"
-                          }`}
+                            }`}
                           aria-pressed={selected}
                         >
                           {selected ? (
@@ -2378,23 +2380,20 @@ export function OnboardingWizard() {
                             </span>
                           ) : null}
                           <p
-                            className={`arcane-kicker text-[10px] ${
-                              selected ? "text-amber-200" : "text-zinc-400"
-                            }`}
+                            className={`arcane-kicker text-[10px] ${selected ? "text-amber-200" : "text-zinc-400"
+                              }`}
                           >
                             {details.kicker}
                           </p>
                           <p
-                            className={`arcane-display-title mt-1 text-2xl font-semibold leading-tight md:text-[1.75rem] ${
-                              selected ? "text-amber-50" : "text-zinc-100"
-                            }`}
+                            className={`arcane-display-title mt-1 text-2xl font-semibold leading-tight md:text-[1.75rem] ${selected ? "text-amber-50" : "text-zinc-100"
+                              }`}
                           >
                             {option.label}
                           </p>
                           <ul
-                            className={`mt-3 max-w-[38ch] list-disc space-y-1.5 pl-5 pr-6 text-[0.93rem] leading-relaxed ${
-                              selected ? "text-zinc-100" : "text-zinc-300"
-                            }`}
+                            className={`mt-3 max-w-[38ch] list-disc space-y-1.5 pl-5 pr-6 text-[0.93rem] leading-relaxed ${selected ? "text-zinc-100" : "text-zinc-300"
+                              }`}
                           >
                             {details.bullets.map((bullet) => (
                               <li key={bullet}>{bullet}</li>
@@ -2421,80 +2420,79 @@ export function OnboardingWizard() {
           </div>
         </section>
 
-          {voiceError ? (
-            <div className="mt-4 rounded-md border border-white/20 bg-zinc-900 px-4 py-3 text-sm text-zinc-200">
-              {voiceError}
-            </div>
-          ) : null}
-          {error ? (
-            <div className="mt-4 rounded-md border border-white/20 bg-zinc-900 px-4 py-3 text-sm text-zinc-200">
-              {error}
-            </div>
-          ) : null}
+        {voiceError ? (
+          <div className="mt-4 rounded-md border border-white/20 bg-zinc-900 px-4 py-3 text-sm text-zinc-200">
+            {voiceError}
+          </div>
+        ) : null}
+        {error ? (
+          <div className="mt-4 rounded-md border border-white/20 bg-zinc-900 px-4 py-3 text-sm text-zinc-200">
+            {error}
+          </div>
+        ) : null}
 
-          <footer className="mt-auto pt-5 flex items-center justify-between gap-3">
-            <div className="flex items-center">
-              {stepId !== "avatar" ? (
-                <Button
-                  type="button"
-                  onClick={goBack}
-                  disabled={stepIndex === 0 || saving}
-                  className="arcane-button-primary h-10 min-w-[170px] rounded-md px-6 text-sm font-medium normal-case tracking-normal disabled:opacity-40"
-                >
-                  <ChevronLeft className="h-4 w-4" /> Back
-                </Button>
-              ) : null}
-            </div>
-            <div
-              className={`flex items-center gap-2 ${
-                stepId === "avatar" ? "justify-end sm:min-w-[340px]" : ""
+        <footer className="mt-auto pt-5 flex items-center justify-between gap-3">
+          <div className="flex items-center">
+            {stepId !== "avatar" ? (
+              <Button
+                type="button"
+                onClick={goBack}
+                disabled={stepIndex === 0 || saving}
+                className="arcane-button-primary h-10 min-w-[170px] rounded-md px-6 text-sm font-medium normal-case tracking-normal disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" /> Back
+              </Button>
+            ) : null}
+          </div>
+          <div
+            className={`flex items-center gap-2 ${stepId === "avatar" ? "justify-end sm:min-w-[340px]" : ""
               }`}
-            >
-              {stepId === "avatar" ? (
-                <Button
-                  onClick={goNext}
-                  disabled={!canAdvanceCurrentStep || saving}
-                  className="arcane-button-primary h-10 min-w-[170px] rounded-md px-6 text-sm font-medium normal-case tracking-normal"
-                >
-                  Next <ChevronRight className="h-4 w-4" />
-                </Button>
-              ) : null}
+          >
+            {stepId === "avatar" ? (
+              <Button
+                onClick={goNext}
+                disabled={!canAdvanceCurrentStep || saving}
+                className="arcane-button-primary h-10 min-w-[170px] rounded-md px-6 text-sm font-medium normal-case tracking-normal"
+              >
+                Next <ChevronRight className="h-4 w-4" />
+              </Button>
+            ) : null}
 
-              {stepId === "path" ? (
-                <Button
-                  type="button"
-                  onClick={goNext}
-                  disabled={!canAdvanceCurrentStep || saving}
-                  className="arcane-button-primary h-10 min-w-[220px] rounded-md px-6 text-sm font-medium normal-case tracking-normal disabled:opacity-40"
-                >
-                  Continue with {onboardingPath === "guided" ? "Detailed Path" : "Minimal Path"}
-                </Button>
-              ) : null}
+            {stepId === "path" ? (
+              <Button
+                type="button"
+                onClick={goNext}
+                disabled={!canAdvanceCurrentStep || saving}
+                className="arcane-button-primary h-10 min-w-[220px] rounded-md px-6 text-sm font-medium normal-case tracking-normal disabled:opacity-40"
+              >
+                Continue with {onboardingPath === "guided" ? "Detailed Path" : "Minimal Path"}
+              </Button>
+            ) : null}
 
-              {stepId === "resume" ? (
-                <Button
-                  type="button"
-                  onClick={goToSimulationStep}
-                  disabled={!hasResumeSignal || saving}
-                  className="arcane-button-primary h-10 rounded-md px-6 text-sm font-medium normal-case tracking-normal disabled:opacity-40"
-                >
-                  Start simulation
-                </Button>
-              ) : null}
+            {stepId === "resume" ? (
+              <Button
+                type="button"
+                onClick={goToSimulationStep}
+                disabled={!hasResumeSignal || saving}
+                className="arcane-button-primary h-10 rounded-md px-6 text-sm font-medium normal-case tracking-normal disabled:opacity-40"
+              >
+                Start simulation
+              </Button>
+            ) : null}
 
-              {stepId === "story" ? (
-                <Button
-                  type="button"
-                  onClick={goToSimulationStep}
-                  disabled={saving}
-                  className="arcane-button-primary h-10 rounded-md px-6 text-sm font-medium normal-case tracking-normal disabled:opacity-40"
-                >
-                  Start simulation
-                </Button>
-              ) : null}
-            </div>
-          </footer>
-        </div>
+            {stepId === "story" ? (
+              <Button
+                type="button"
+                onClick={goToSimulationStep}
+                disabled={saving}
+                className="arcane-button-primary h-10 rounded-md px-6 text-sm font-medium normal-case tracking-normal disabled:opacity-40"
+              >
+                Start simulation
+              </Button>
+            ) : null}
+          </div>
+        </footer>
+      </div>
 
     </div>
   );
