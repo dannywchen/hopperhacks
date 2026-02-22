@@ -1,15 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { hydrateLocalSimulationStateFromSupabase } from "@/lib/client/cloud-state";
 import { loadSetup } from "@/lib/client/setup-store";
 import type { UserSetup } from "@/lib/types";
 
 export default function DashboardPage() {
-  const [setup] = useState<UserSetup | null>(() => {
+  const [setup, setSetup] = useState<UserSetup | null>(() => {
     if (typeof window === "undefined") return null;
     return loadSetup();
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function hydrate() {
+      try {
+        const result = await hydrateLocalSimulationStateFromSupabase();
+        if (!cancelled && result.setup) {
+          setSetup(result.setup);
+        }
+      } catch {}
+    }
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const name = setup?.profile?.name?.trim() || "Wizard";
 

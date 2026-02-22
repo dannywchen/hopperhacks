@@ -2,12 +2,33 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabase } from "@/lib/supabase";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+function formatAuthErrorMessage(error: unknown, isSignUp: boolean) {
+  const fallback = isSignUp
+    ? "Unable to create account right now."
+    : "Unable to sign in right now.";
+  if (!error || typeof error !== "object") return fallback;
+
+  const message =
+    "message" in error && typeof error.message === "string"
+      ? error.message
+      : fallback;
+  const status = "status" in error && typeof error.status === "number" ? error.status : null;
+  const lower = message.toLowerCase();
+
+  if (status === 422 && lower.includes("password")) {
+    return "Password does not meet requirements. Use at least 8 characters.";
+  }
+  if (status === 422 && (lower.includes("already") || lower.includes("exists"))) {
+    return "That email is already registered. Try signing in instead.";
+  }
+  if (!isSignUp && status === 400) {
+    return "Invalid email or password.";
+  }
+
+  return message;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,17 +42,36 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
+    const supabase = getSupabase();
 
-    const { error } = isSignUp
+    const { data, error } = isSignUp
       ? await supabase.auth.signUp({ email, password })
       : await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      setError(error.message);
+      setError(formatAuthErrorMessage(error, isSignUp));
       setLoading(false);
-    } else {
-      router.push("/onboarding");
+      return;
     }
+
+    const token =
+      data.session?.access_token ??
+      (await supabase.auth.getSession()).data.session?.access_token ??
+      null;
+
+    if (token) {
+      await fetch("/api/user/bootstrap", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }).catch(() => null);
+      router.push("/onboarding");
+      return;
+    }
+
+    setLoading(false);
+    setError("Check your email to confirm your account before continuing.");
   };
 
   return (
@@ -58,6 +98,7 @@ export default function LoginPage() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
             className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:border-white/30"
             required
           />
