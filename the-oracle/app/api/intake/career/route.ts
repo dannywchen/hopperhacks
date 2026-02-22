@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { horizonPresetToYears } from "@/lib/onboarding/config";
 import { getAuthUser } from "@/lib/auth";
-import { saveAgentMemory } from "@/lib/game-db";
+import { ensureUserBootstrap, saveAgentMemory, saveUserSetup } from "@/lib/game-db";
 import type {
   OnboardingSnapshot,
   SimulationIntent,
@@ -329,6 +329,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid onboarding payload." }, { status: 400 });
     }
 
+    const user = await getAuthUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { text = "", onboarding } = parsed.data;
     const snapshot = toSnapshot(onboarding);
     const now = new Date().toISOString();
@@ -414,10 +419,12 @@ export async function POST(req: Request) {
       ...(snapshot ? { onboarding: snapshot } : {}),
     };
 
-    try {
-      const user = await getAuthUser(req);
-      if (user && snapshot) {
-        await saveAgentMemory({
+    await ensureUserBootstrap(user.id);
+    await saveUserSetup(user.id, setup);
+
+    if (snapshot) {
+      const writes = [
+        saveAgentMemory({
           profile_id: user.id,
           category: "onboarding_interview",
           key: "onboarding_snapshot",
@@ -431,10 +438,49 @@ export async function POST(req: Request) {
             reflections: snapshot.reflections.slice(0, 8),
           }),
           importance: 95,
-        });
+        }),
+      ];
+
+      if (snapshot.resumeText) {
+        writes.push(
+          saveAgentMemory({
+            profile_id: user.id,
+            category: "onboarding_intake",
+            key: "onboarding_resume_latest",
+            content: cleanText(snapshot.resumeText, 12_000),
+            importance: 90,
+          }),
+        );
       }
-    } catch {
-      // Best effort persistence; onboarding setup generation should not fail if memory write fails.
+
+      if (snapshot.lifeStory) {
+        writes.push(
+          saveAgentMemory({
+            profile_id: user.id,
+            category: "onboarding_intake",
+            key: "onboarding_manual_context_latest",
+            content: cleanText(snapshot.lifeStory, 12_000),
+            importance: 88,
+          }),
+        );
+      }
+
+      if (snapshot.interviewMessages.length > 0) {
+        writes.push(
+          saveAgentMemory({
+            profile_id: user.id,
+            category: "onboarding_interview",
+            key: "onboarding_conversation_latest",
+            content: snapshot.interviewMessages
+              .slice(-28)
+              .map((message) => `[${message.role}] ${cleanText(message.content, 500)}`)
+              .join("\n"),
+            importance: 91,
+          }),
+        );
+      }
+
+      await Promise.all(writes);
     }
 
     return NextResponse.json({

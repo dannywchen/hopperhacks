@@ -71,6 +71,17 @@ export const interviewStrategistLayerSchema = z.object({
   shouldSuggestSimulate: z.boolean(),
 });
 
+export type MockInterviewResponse = {
+  reflections: OnboardingDomainReflection[];
+  nextPrompt: {
+    domainId: OnboardingInterviewDomainId;
+    question: string;
+    action: "follow_up" | "advance_domain";
+    rationale: string;
+    shouldSuggestSimulate: boolean;
+  };
+};
+
 function normalizeMessage(
   message: NonNullable<InterviewRequestPayload["messages"]>[number],
 ): OnboardingInterviewMessage {
@@ -176,7 +187,7 @@ export function mockInterviewResponse(input: {
   resumeText?: string | null;
   messages: OnboardingInterviewMessage[];
   previousReflections?: OnboardingDomainReflection[];
-}) {
+}): MockInterviewResponse {
   const userMessages = input.messages.filter((message) => message.role === "user");
   const sourceText = [input.resumeText, input.lifeStory, ...userMessages.map((m) => m.content)]
     .filter(Boolean)
@@ -246,6 +257,9 @@ export function mockInterviewResponse(input: {
   const shouldSuggestSimulate =
     mergedReflections.filter((reflection) => reflection.coverage >= 40).length >= 4 ||
     userMessages.length >= 6;
+  const action: MockInterviewResponse["nextPrompt"]["action"] = shouldFollowUpSameDomain
+    ? "follow_up"
+    : "advance_domain";
 
   return {
     reflections: mergedReflections,
@@ -256,7 +270,7 @@ export function mockInterviewResponse(input: {
         messages: input.messages,
         preferFollowUp: shouldFollowUpSameDomain,
       })}`,
-      action: shouldFollowUpSameDomain ? "follow_up" : "advance_domain",
+      action,
       rationale: shouldFollowUpSameDomain
         ? "Your latest answer was brief, so we are probing deeper."
         : `Lowest coverage area is ${targetDomain.label}.`,

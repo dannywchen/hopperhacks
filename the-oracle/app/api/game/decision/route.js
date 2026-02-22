@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { getAuthUser } from '@/lib/auth'
-import { applyStatDeltas, saveAgentMemory } from '@/lib/game-db'
+import { applyStatDeltas, ensureUserBootstrap, saveAgentMemory } from '@/lib/game-db'
 
 export async function POST(request) {
   const user = await getAuthUser(request)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
+    await ensureUserBootstrap(user.id)
     const { deltas, event, memory } = await request.json()
 
     if (!deltas || !event) {

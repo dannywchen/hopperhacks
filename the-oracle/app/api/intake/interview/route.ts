@@ -4,6 +4,7 @@ import {
   interviewReflectionLayerSchema,
   interviewRequestSchema,
   interviewStrategistLayerSchema,
+  mockInterviewResponse,
   mergeReflections,
   normalizeInterviewMessages,
   reflectionCoverageMap,
@@ -17,7 +18,7 @@ import { getAuthUser } from "@/lib/auth";
 import { saveAgentMemory } from "@/lib/game-db";
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-const REQUIRED_GEMINI_MODEL = "gemini-3-flash";
+const REQUIRED_GEMINI_MODEL = "gemini-3-flash-preview";
 
 type GeminiGenerateResponse = {
   candidates?: Array<{
@@ -44,6 +45,26 @@ type InterviewTurnResult = {
   provider: "gemini" | "local";
   model?: string;
 };
+
+function generateInterviewTurnLocally(input: {
+  resumeText?: string | null;
+  lifeStory?: string | null;
+  messages: OnboardingInterviewMessage[];
+  previousReflections: OnboardingDomainReflection[];
+}): InterviewTurnResult {
+  const fallback = mockInterviewResponse({
+    resumeText: input.resumeText,
+    lifeStory: input.lifeStory,
+    messages: input.messages,
+    previousReflections: input.previousReflections,
+  });
+
+  return {
+    nextPrompt: fallback.nextPrompt,
+    reflections: fallback.reflections,
+    provider: "local",
+  };
+}
 
 type LatestAnswerAssessment = {
   isTooShort: boolean;
@@ -327,15 +348,14 @@ async function generateInterviewTurnWithGemini(input: {
 }
 
 async function persistInterviewProgress(params: {
-  request: Request;
+  profileId: string;
   messages: OnboardingInterviewMessage[];
   reflections: OnboardingDomainReflection[];
   nextQuestion: string;
+  lifeStory?: string | null;
+  resumeText?: string | null;
 }) {
   try {
-    const user = await getAuthUser(params.request);
-    if (!user) return;
-
     const latestUserMessage = [...params.messages]
       .reverse()
       .find((message) => message.role === "user");
@@ -346,7 +366,7 @@ async function persistInterviewProgress(params: {
 
     const writes = [
       saveAgentMemory({
-        profile_id: user.id,
+        profile_id: params.profileId,
         category: "onboarding_interview",
         key: "onboarding_interview_progress",
         content: [
@@ -356,12 +376,25 @@ async function persistInterviewProgress(params: {
         ].join("\n"),
         importance: 90,
       }),
+      saveAgentMemory({
+        profile_id: params.profileId,
+        category: "onboarding_interview",
+        key: "onboarding_context_latest",
+        content: JSON.stringify({
+          updatedAt: new Date().toISOString(),
+          resumeText: sanitizeText(params.resumeText ?? "", 2800),
+          lifeStory: sanitizeText(params.lifeStory ?? "", 2800),
+          reflectionCount: params.reflections.length,
+          messageCount: params.messages.length,
+        }),
+        importance: 86,
+      }),
     ];
 
     if (latestUserMessage?.content) {
       writes.push(
         saveAgentMemory({
-          profile_id: user.id,
+          profile_id: params.profileId,
           category: "onboarding_interview",
           key: `onboarding_turn_${turnKeySuffix}`,
           content: sanitizeText(latestUserMessage.content, 2000),
@@ -385,6 +418,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid interview payload." }, { status: 400 });
     }
 
+    const user = await getAuthUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = parsed.data;
     const messages = normalizeInterviewMessages(body.messages ?? []);
     const previousReflections = (body.previousReflections ?? []) as OnboardingDomainReflection[];
@@ -398,39 +436,67 @@ export async function POST(req: Request) {
         createdAt: new Date().toISOString(),
         domainId: seedDomain.id,
       };
-      const seedTurn = await generateInterviewTurnWithGemini({
-        resumeText: body.resumeText,
-        lifeStory: body.lifeStory,
-        simulationIntents: body.simulationIntents,
-        messages: [seedMessage],
-        previousReflections,
-      });
+      let seedTurn: InterviewTurnResult;
+      let usedFallback = false;
+      try {
+        seedTurn = await generateInterviewTurnWithGemini({
+          resumeText: body.resumeText,
+          lifeStory: body.lifeStory,
+          simulationIntents: body.simulationIntents,
+          messages: [seedMessage],
+          previousReflections,
+        });
+      } catch (error) {
+        console.warn("Gemini seed turn failed; using local fallback.", error);
+        seedTurn = generateInterviewTurnLocally({
+          resumeText: body.resumeText,
+          lifeStory: body.lifeStory,
+          messages: [seedMessage],
+          previousReflections,
+        });
+        usedFallback = true;
+      }
       return NextResponse.json({
         nextPrompt: seedTurn.nextPrompt,
         reflections: seedTurn.reflections,
         coverage: reflectionCoverageMap(seedTurn.reflections),
         meta: {
-          mode: "llm_seed",
+          mode: usedFallback ? "local_seed_fallback" : "llm_seed",
           provider: seedTurn.provider,
           model: seedTurn.model,
-          usedFallback: false,
+          usedFallback,
         },
       });
     }
 
-    const turn = await generateInterviewTurnWithGemini({
-      resumeText: body.resumeText,
-      lifeStory: body.lifeStory,
-      simulationIntents: body.simulationIntents,
-      messages,
-      previousReflections,
-    });
+    let turn: InterviewTurnResult;
+    let usedFallback = false;
+    try {
+      turn = await generateInterviewTurnWithGemini({
+        resumeText: body.resumeText,
+        lifeStory: body.lifeStory,
+        simulationIntents: body.simulationIntents,
+        messages,
+        previousReflections,
+      });
+    } catch (error) {
+      console.warn("Gemini turn failed; using local fallback.", error);
+      turn = generateInterviewTurnLocally({
+        resumeText: body.resumeText,
+        lifeStory: body.lifeStory,
+        messages,
+        previousReflections,
+      });
+      usedFallback = true;
+    }
 
     await persistInterviewProgress({
-      request: req,
+      profileId: user.id,
       messages,
       reflections: turn.reflections,
       nextQuestion: turn.nextPrompt.question,
+      lifeStory: body.lifeStory ?? null,
+      resumeText: body.resumeText ?? null,
     });
 
     return NextResponse.json({
@@ -438,10 +504,10 @@ export async function POST(req: Request) {
       reflections: turn.reflections,
       coverage: reflectionCoverageMap(turn.reflections),
       meta: {
-        mode: "llm",
+        mode: usedFallback ? "local_fallback" : "llm",
         provider: turn.provider,
         model: turn.model,
-        usedFallback: false,
+        usedFallback,
       },
     });
   } catch (error: unknown) {

@@ -1004,6 +1004,31 @@ export function OnboardingWizard() {
   );
 
   useEffect(() => {
+    let cancelled = false;
+    async function bootstrap() {
+      try {
+        await fetchJson<{ success: boolean }>("/api/user/bootstrap", {
+          method: "POST",
+          timeoutMs: 8_000,
+        });
+      } catch (error: any) {
+        if (cancelled) return;
+        const message = String(error?.message ?? "");
+        if (
+          message.includes("401") ||
+          message.toLowerCase().includes("unauthorized")
+        ) {
+          router.replace(`/login?next=${encodeURIComponent("/onboarding")}`);
+        }
+      }
+    }
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  useEffect(() => {
     if (stepId !== "story") return;
     let cancelled = false;
 

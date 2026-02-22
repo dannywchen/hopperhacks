@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
+import { hydrateLocalSimulationStateFromSupabase } from "@/lib/client/cloud-state";
 import { loadSetup } from "@/lib/client/setup-store";
 import type { UserSetup } from "@/lib/types";
 
@@ -12,8 +12,7 @@ const supabase = createClient(
 );
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const [setup] = useState<UserSetup | null>(() => {
+  const [setup, setSetup] = useState<UserSetup | null>(() => {
     if (typeof window === "undefined") return null;
     return loadSetup();
   });
@@ -25,6 +24,20 @@ export default function DashboardPage() {
         window.location.href = "/login";
       }
     });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function hydrate() {
+      try {
+        const result = await hydrateLocalSimulationStateFromSupabase();
+        if (!cancelled && result.setup) {
+          setSetup(result.setup);
+        }
+      } catch {}
+    }
+    void hydrate();
+    return () => { cancelled = true; };
   }, []);
 
   const handleLogout = async () => {

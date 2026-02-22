@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { OnboardingLinkedinProfile } from "@/lib/types";
+import { getAuthUser } from "@/lib/auth";
+import { saveAgentMemory } from "@/lib/game-db";
 
 export const runtime = "nodejs";
 
@@ -280,6 +282,11 @@ async function fetchJsonWithTimeout<T>(
 
 export async function POST(req: Request) {
   try {
+    const user = await getAuthUser(req);
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const token = process.env.APIFY_API_TOKEN;
     if (!token) {
       return NextResponse.json(
@@ -376,6 +383,18 @@ export async function POST(req: Request) {
         { status: 424 },
       );
     }
+
+    await saveAgentMemory({
+      profile_id: user.id,
+      category: "onboarding_intake",
+      key: "onboarding_linkedin_latest",
+      content: JSON.stringify({
+        profile,
+        text: text.slice(0, 12_000),
+        updatedAt: new Date().toISOString(),
+      }),
+      importance: 88,
+    });
 
     return NextResponse.json({
       text,
